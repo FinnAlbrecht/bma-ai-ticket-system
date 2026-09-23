@@ -1,9 +1,7 @@
 # TicketSystem – Backend
 
-.NET-9-Solution nach Domain-Driven-Design-Schichten. Aktuell nur ein Test-Setup
-mit lauffähiger Web API + Swagger; die Domain-/Application-/Infrastructure-Ordner
-sind bewusst leer (`.gitkeep`) und werden mit dem eigentlichen Ticket-Domänenmodell
-befüllt.
+.NET-9-Solution nach Domain-Driven-Design-Schichten. Erste funktionierende Ticket-Vertical-Slice:
+Ticket anlegen, auflisten, abrufen und klassifizieren.
 
 ## Starten
 
@@ -12,7 +10,16 @@ dotnet run --project src/TicketSystem.Api
 ```
 
 Swagger UI: `http://localhost:<port>/swagger`
-Test-Endpoint: `GET /api/test`
+
+## Endpoints
+
+| Methode | Route                       | Beschreibung                          |
+|---------|------------------------------|----------------------------------------|
+| GET     | `/api/test`                  | Health-Check                           |
+| POST    | `/api/tickets`                | Neues Ticket anlegen (`title`, `description`) |
+| GET     | `/api/tickets`                | Alle Tickets auflisten                 |
+| GET     | `/api/tickets/{id}`            | Ein Ticket abrufen                     |
+| POST    | `/api/tickets/{id}/classify`   | Ticket automatisch klassifizieren      |
 
 ## Struktur
 
@@ -21,16 +28,31 @@ backend/
   TicketSystem.sln
   src/
     TicketSystem.Api/              Presentation-Layer: Controller, Program.cs, Swagger
-    TicketSystem.Domain/           Entities, ValueObjects, Enums, Events, Repository-Interfaces (pro Bounded Context)
-      Tickets/
-      Classification/
+    TicketSystem.Domain/           Entities, ValueObjects, Enums, Repository-Interfaces (pro Bounded Context)
+      Tickets/                     Ticket-Aggregat (Entity, Enums, Repository-Interface, Exceptions)
+      Classification/              Klassifizierungshistorie (Entity, Enums, ValueObjects, Repository-Interface)
       Common/
-    TicketSystem.Application/      Use Cases (Commands/Queries), DTOs, Interfaces
-      Tickets/
-      Classification/
-      Common/
-    TicketSystem.Infrastructure/   Persistence, KI-API-Anbindung
-      Persistence/
-      Ai/
-      Common/
+    TicketSystem.Application/      Use Cases (Commands/Queries), DTOs, Ports
+      Tickets/                     CreateTicket, GetAllTickets, GetTicketById
+      Classification/              ClassifyTicket
+      Common/                      IClassificationService (Port), DI-Registrierung
+    TicketSystem.Infrastructure/   Adapter: Persistence, KI-Anbindung
+      Persistence/Repositories/    In-Memory-Repositories (Platzhalter für EF Core/SQLite)
+      Ai/Clients/                  KeywordBasedClassificationService (Platzhalter für Claude/OpenAI API)
+      Common/                      DI-Registrierung
 ```
+
+## Aktueller Stand / nächste Schritte
+
+- **Persistenz** ist bewusst In-Memory (`InMemoryTicketRepository`, `InMemoryTicketClassificationRepository`),
+  damit ohne DB-Setup entwickelt und getestet werden kann. Da Application/Domain nur gegen die
+  Repository-Interfaces programmieren, lässt sich das später durch EF Core (z. B. SQLite) ersetzen,
+  ohne Domain/Application anzufassen.
+- **Klassifizierung** läuft aktuell über `KeywordBasedClassificationService` (simple Stichwortsuche,
+  kein echter KI-Call). Das ist ein Platzhalter für die in der Projektvereinbarung vorgesehene
+  Anthropic-Claude- oder OpenAI-API-Anbindung. Da `IClassificationService` in der Application-Schicht
+  definiert ist, betrifft der Umstieg auf die echte KI-API nur eine neue Implementierung in
+  `TicketSystem.Infrastructure/Ai/Clients/` plus die DI-Registrierung in `InfrastructureServiceCollectionExtensions`.
+- Die 10 Ticket-Kategorien in `TicketCategory` sind ein erster Vorschlag basierend auf den Beispielen aus
+  der Projektvereinbarung (Passwort-Reset, WLAN, Drucker, ...) – ggf. an die real erhobenen 10 Ticket-Typen
+  aus dem Lehrbetrieb anpassen.
