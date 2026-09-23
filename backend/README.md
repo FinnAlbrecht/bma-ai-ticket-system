@@ -1,6 +1,6 @@
 # TicketSystem – Backend
 
-.NET-10-Solution nach Domain-Driven-Design-Schichten. Aktuell nur ein Test-Setup
+.NET-9-Solution nach Domain-Driven-Design-Schichten. Aktuell nur ein Test-Setup
 mit lauffähiger Web API + Swagger; die Domain-/Application-/Infrastructure-Ordner
 sind bewusst leer (`.gitkeep`) und werden mit dem eigentlichen Ticket-Domänenmodell
 befüllt.
