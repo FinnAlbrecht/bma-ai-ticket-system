@@ -3,6 +3,10 @@
 .NET-10-Solution nach Domain-Driven-Design-Schichten. Erste funktionierende Ticket-Vertical-Slice:
 Ticket anlegen, auflisten, abrufen und klassifizieren.
 
+## Voraussetzungen
+
+- [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+
 ## Starten
 
 ```bash
@@ -56,3 +60,8 @@ backend/
 - Die 10 Ticket-Kategorien in `TicketCategory` sind ein erster Vorschlag basierend auf den Beispielen aus
   der Projektvereinbarung (Passwort-Reset, WLAN, Drucker, ...) – ggf. an die real erhobenen 10 Ticket-Typen
   aus dem Lehrbetrieb anpassen.
+- **Tests fehlen noch komplett** (kein Testprojekt). Als Nächstes: Unit-Tests für die Domain-Regeln
+  (`Ticket`, `TicketClassification`) und Integrationstests für die Endpoints.
+- Für den in der Projektvereinbarung vorgesehenen Vergleich KI vs. menschlicher Support fehlt aktuell
+  ein Weg, eine menschliche Klassifizierung/Lösung zum selben Ticket zu erfassen (`ClassificationSource.Human`
+  ist im Enum vorbereitet, wird aber noch nirgends genutzt).
