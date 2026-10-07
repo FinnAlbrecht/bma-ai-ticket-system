@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: bma-ai-ticket-system
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/test
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      - key: Database__Provider
+        value: PostgreSQL
+      - key: Classification__Provider
+        value: OpenRouter
+      - key: ConnectionStrings__TicketDatabase
+        sync: false
+      - key: OpenRouter__ApiKey
+        sync: false
