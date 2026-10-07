@@ -20,6 +20,10 @@ public class Ticket
             throw new ArgumentException("Title darf nicht leer sein.", nameof(title));
         if (string.IsNullOrWhiteSpace(description))
             throw new ArgumentException("Description darf nicht leer sein.", nameof(description));
+        if (title.Length > 4000)
+            throw new ArgumentException("Title darf höchstens 4000 Zeichen enthalten.", nameof(title));
+        if (description.Length > 4000)
+            throw new ArgumentException("Description darf höchstens 4000 Zeichen enthalten.", nameof(description));
 
         Id = Guid.NewGuid();
         Title = title;

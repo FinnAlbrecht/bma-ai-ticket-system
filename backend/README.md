@@ -1,6 +1,6 @@
 # TicketSystem – Backend
 
-.NET-9-Solution nach Domain-Driven-Design-Schichten. Erste funktionierende Ticket-Vertical-Slice:
+.NET-10-Solution nach Domain-Driven-Design-Schichten. Erste funktionierende Ticket-Vertical-Slice:
 Ticket anlegen, auflisten, abrufen und klassifizieren.
 
 ## Voraussetzungen
@@ -8,6 +8,22 @@ Ticket anlegen, auflisten, abrufen und klassifizieren.
 - [.NET 10 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
 
 ## Starten
+
+OpenRouter ist der Standard-Provider. Den API-Key lokal als User-Secret setzen:
+
+```bash
+dotnet user-secrets set "OpenRouter:ApiKey" "<dein-openrouter-api-key>" --project src/TicketSystem.Api
+```
+
+Standardmodell ist `nvidia/nemotron-3-ultra-550b-a55b`. Wenn der API-Key bereits geteilt oder
+veröffentlicht wurde, widerrufe ihn zuerst und verwende nur einen neu erstellten Key. Das Modell
+kann bei OpenRouter geändert werden; prüfe dort den aktuellen Gratis-Status, verfügbare Credits und
+Nutzungslimits.
+
+Alternativ kann die Umgebungsvariable `OpenRouter__ApiKey` gesetzt werden. Für Claude:
+`Anthropic:ApiKey` beziehungsweise `Anthropic__ApiKey`. API-Keys gehören nicht in versionierte
+Dateien. Ohne gültigen Key startet die Anwendung mit einer Warnung; Klassifizierungsaufrufe liefern
+HTTP 503 und wechseln nicht unbemerkt auf Stichwortregeln.
 
 ```bash
 dotnet run --project src/TicketSystem.Api
@@ -24,6 +40,18 @@ Swagger UI: `http://localhost:<port>/swagger`
 | GET     | `/api/tickets`                | Alle Tickets auflisten                 |
 | GET     | `/api/tickets/{id}`            | Ein Ticket abrufen                     |
 | POST    | `/api/tickets/{id}/classify`   | Ticket automatisch klassifizieren      |
+| GET     | `/api/tickets/{id}/classifications` | Klassifizierungshistorie abrufen   |
+
+Der Standard-Provider lässt sich in `appsettings.json` über `Classification:Provider` auf
+`OpenRouter`, `Claude` oder `Keyword` setzen. Für einen direkten Vergleich kann derselbe Endpunkt
+mit `?provider=openrouter`, `?provider=claude` oder `?provider=keyword` aufgerufen werden; jede Klassifizierung wird getrennt mit Kategorie,
+Lösungsvorschlag, Confidence, Dauer, Quelle und Modell gespeichert.
+
+OpenRouter und Claude klassifizieren ausschliesslich IT-bezogene Tickets. Bei fehlendem IT-Bezug wird kein
+Lösungsvorschlag erzeugt; die Historie weist das Ergebnis als `OutOfScope` aus.
+OpenRouter-Modell und -Timeout lassen sich unter `OpenRouter:Model` und
+`OpenRouter:TimeoutSeconds` konfigurieren. API-Aufrufe können Kosten verursachen; setze beim
+jeweiligen Provider ein Ausgabenlimit.
 
 ## Struktur
 
@@ -42,7 +70,8 @@ backend/
       Common/                      IClassificationService (Port), DI-Registrierung
     TicketSystem.Infrastructure/   Adapter: Persistence, KI-Anbindung
       Persistence/Repositories/    In-Memory-Repositories (Platzhalter für EF Core/SQLite)
-      Ai/Clients/                  KeywordBasedClassificationService (Platzhalter für Claude/OpenAI API)
+      Ai/Clients/                  OpenRouterClassificationService, ClaudeClassificationService,
+                                   KeywordBasedClassificationService
       Common/                      DI-Registrierung
 ```
 
@@ -52,16 +81,13 @@ backend/
   damit ohne DB-Setup entwickelt und getestet werden kann. Da Application/Domain nur gegen die
   Repository-Interfaces programmieren, lässt sich das später durch EF Core (z. B. SQLite) ersetzen,
   ohne Domain/Application anzufassen.
-- **Klassifizierung** läuft aktuell über `KeywordBasedClassificationService` (simple Stichwortsuche,
-  kein echter KI-Call). Das ist ein Platzhalter für die in der Projektvereinbarung vorgesehene
-  Anthropic-Claude- oder OpenAI-API-Anbindung. Da `IClassificationService` in der Application-Schicht
-  definiert ist, betrifft der Umstieg auf die echte KI-API nur eine neue Implementierung in
-  `TicketSystem.Infrastructure/Ai/Clients/` plus die DI-Registrierung in `InfrastructureServiceCollectionExtensions`.
-- Die 10 Ticket-Kategorien in `TicketCategory` sind ein erster Vorschlag basierend auf den Beispielen aus
-  der Projektvereinbarung (Passwort-Reset, WLAN, Drucker, ...) – ggf. an die real erhobenen 10 Ticket-Typen
-  aus dem Lehrbetrieb anpassen.
-- **Tests fehlen noch komplett** (kein Testprojekt). Als Nächstes: Unit-Tests für die Domain-Regeln
-  (`Ticket`, `TicketClassification`) und Integrationstests für die Endpoints.
+- **Klassifizierung** nutzt standardmässig OpenRouter, optional Claude oder ausdrücklich gewählte
+  lokale Stichwortregeln. KI-Ausfälle führen nicht zu einem stillen Wechsel auf die Stichwortsuche.
+  Das offizielle `Anthropic` NuGet-Paket wird ausschliesslich in Infrastructure verwendet.
+- Die zehn fachlichen IT-Kategorien in `TicketCategory` sind ein erster Vorschlag basierend auf den Beispielen aus
+  der Projektvereinbarung (Passwort-Reset, WLAN, Drucker, ...); `Other` und `OutOfScope` ergänzen diese für
+  unbekannte bzw. nicht IT-bezogene Tickets.
+- Tests befinden sich im Projekt `tests/TicketSystem.Tests`.
 - Für den in der Projektvereinbarung vorgesehenen Vergleich KI vs. menschlicher Support fehlt aktuell
   ein Weg, eine menschliche Klassifizierung/Lösung zum selben Ticket zu erfassen (`ClassificationSource.Human`
   ist im Enum vorbereitet, wird aber noch nirgends genutzt).

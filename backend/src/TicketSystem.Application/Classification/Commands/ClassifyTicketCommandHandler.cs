@@ -13,16 +13,16 @@ public class ClassifyTicketCommandHandler
 {
     private readonly ITicketRepository _ticketRepository;
     private readonly ITicketClassificationRepository _classificationRepository;
-    private readonly IClassificationService _classificationService;
+    private readonly IClassificationServiceResolver _classificationServiceResolver;
 
     public ClassifyTicketCommandHandler(
         ITicketRepository ticketRepository,
         ITicketClassificationRepository classificationRepository,
-        IClassificationService classificationService)
+        IClassificationServiceResolver classificationServiceResolver)
     {
         _ticketRepository = ticketRepository;
         _classificationRepository = classificationRepository;
-        _classificationService = classificationService;
+        _classificationServiceResolver = classificationServiceResolver;
     }
 
     public async Task<ClassificationResultDto> HandleAsync(ClassifyTicketCommand command, CancellationToken ct = default)
@@ -30,15 +30,18 @@ public class ClassifyTicketCommandHandler
         var ticket = await _ticketRepository.GetByIdAsync(command.TicketId, ct)
             ?? throw new TicketNotFoundException(command.TicketId);
 
-        var outcome = await _classificationService.ClassifyAsync(ticket.Title, ticket.Description, ct);
+        var classificationService = _classificationServiceResolver.Resolve(command.Provider);
+        var outcome = await classificationService.ClassifyAsync(ticket.Title, ticket.Description, ct);
 
         var classification = new TicketClassification(
             ticket.Id,
             outcome.Category,
             new ClassificationConfidence(outcome.Confidence),
             outcome.SuggestedSolution,
-            ClassificationSource.Ai,
-            outcome.Duration);
+            outcome.Source,
+            outcome.Duration,
+            outcome.Model,
+            outcome.IsItRelated);
 
         await _classificationRepository.AddAsync(classification, ct);
 
@@ -50,8 +53,11 @@ public class ClassifyTicketCommandHandler
             outcome.Category.ToString(),
             outcome.Confidence,
             outcome.SuggestedSolution,
-            ClassificationSource.Ai.ToString(),
+            outcome.Source.ToString(),
             outcome.Duration,
-            classification.CreatedAt);
+            classification.CreatedAt,
+            outcome.Model,
+            outcome.IsItRelated,
+            outcome.IsItRelated ? null : "Kein IT-Bezug, Ticket wurde nicht automatisch bearbeitet");
     }
 }

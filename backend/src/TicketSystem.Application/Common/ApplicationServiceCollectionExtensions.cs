@@ -1,5 +1,6 @@
 using Microsoft.Extensions.DependencyInjection;
 using TicketSystem.Application.Classification.Commands;
+using TicketSystem.Application.Classification.Queries;
 using TicketSystem.Application.Tickets.Commands;
 using TicketSystem.Application.Tickets.Queries;
 
@@ -13,6 +14,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddScoped<GetAllTicketsQueryHandler>();
         services.AddScoped<GetTicketByIdQueryHandler>();
         services.AddScoped<ClassifyTicketCommandHandler>();
+        services.AddScoped<GetTicketClassificationHistoryQueryHandler>();
         return services;
     }
 }

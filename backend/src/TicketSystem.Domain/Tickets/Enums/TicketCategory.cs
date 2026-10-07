@@ -13,5 +13,6 @@ public enum TicketCategory
     SoftwareInstallation,
     AccessRights,
     AccountLockout,
-    Other
+    Other,
+    OutOfScope
 }

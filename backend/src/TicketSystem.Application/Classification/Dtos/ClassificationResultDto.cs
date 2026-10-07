@@ -7,4 +7,7 @@ public record ClassificationResultDto(
     string SuggestedSolution,
     string Source,
     TimeSpan Duration,
-    DateTimeOffset CreatedAt);
+    DateTimeOffset CreatedAt,
+    string Model,
+    bool IsItRelated,
+    string? Message);
