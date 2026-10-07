@@ -18,7 +18,7 @@ Lösungszeit, im Vergleich zum menschlichen IT-Support.
 ```
 bma-ai-ticket-system/
   backend/    .NET-10-Web-API nach Domain-Driven Design (siehe backend/README.md)
-  frontend/   React-Frontend (noch in Arbeit)
+  frontend/   React-Frontend für Ticketbearbeitung und KI-Klassifizierung
 ```
 
 ## Tech-Stack
@@ -27,6 +27,25 @@ C# (.NET 10) + React, KI-API (OpenRouter oder Anthropic Claude).
 
 ## Stand
 
-- **Backend:** erste funktionierende Ticket-Vertical-Slice (anlegen, auflisten, abrufen, klassifizieren)
-  mit OpenRouter als Standard-Provider sowie optional Claude und expliziten Keyword-Regeln. Details siehe [backend/README.md](backend/README.md).
-- **Frontend:** noch nicht begonnen.
+- **Backend:** SQLite speichert Konten, Tickets und KI-Klassifizierungen dauerhaft. Teammitglieder melden sich mit E-Mail und Passwort an; Tickets werden ihrem Ersteller zugeordnet. Ähnliche gelöste Tickets können ihre Lösung wiederverwenden und als hilfreich bestätigt werden. Details siehe [backend/README.md](backend/README.md).
+- **Frontend:** React-Oberfläche mit den Ticketansichten „Deine“ und „Alle“, Erstelleranzeige und separatem Dashboard-Tab: Ticketzeiten einzeln, Anzahl gelöster Tickets, gesamte Lösungszeit und durchschnittliche Geschwindigkeit. Neue Tickets startet es automatisch mit OpenRouter.
+
+## Lokal starten
+
+Backend und Frontend benötigen je ein eigenes Terminal. Die .NET-API muss auf Port `5278` laufen;
+der Vite-Entwicklungsserver leitet `/api`-Anfragen an diese API weiter.
+
+1. Backend gemäss [backend/README.md](backend/README.md) starten.
+2. Im zweiten Terminal das Frontend starten:
+
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+3. Die im Terminal angezeigte lokale Vite-Adresse im Browser öffnen.
+
+Der API-Schlüssel wird ausschliesslich im Backend konfiguriert. Für die Klassifizierung mit OpenRouter
+oder Claude muss der jeweilige Schlüssel dort gesetzt sein; der Keyword-Provider benötigt keinen
+externen KI-Schlüssel.

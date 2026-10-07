@@ -23,4 +23,14 @@ public class InMemoryTicketClassificationRepository : ITicketClassificationRepos
 
         return Task.FromResult<IReadOnlyList<TicketClassification>>(result);
     }
+
+    public Task<IReadOnlyList<TicketClassification>> GetAllAsync(CancellationToken ct = default)
+    {
+        IReadOnlyList<TicketClassification> result = _classificationsByTicket.Values
+            .SelectMany(classifications => classifications)
+            .OrderByDescending(classification => classification.CreatedAt)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
 }

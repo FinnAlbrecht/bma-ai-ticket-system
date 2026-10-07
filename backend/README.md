@@ -39,9 +39,14 @@ Swagger UI: `http://localhost:<port>/swagger`
 | GET     | `/api/test`                  | Health-Check                           |
 | POST    | `/api/tickets`                | Neues Ticket anlegen (`title`, `description`) |
 | GET     | `/api/tickets`                | Alle Tickets auflisten                 |
+| DELETE  | `/api/tickets`                | Alle Tickets samt Klassifizierungen löschen |
 | GET     | `/api/tickets/{id}`            | Ein Ticket abrufen                     |
 | POST    | `/api/tickets/{id}/classify`   | Ticket automatisch klassifizieren      |
 | GET     | `/api/tickets/{id}/classifications` | Klassifizierungshistorie abrufen   |
+| GET     | `/api/dashboard/metrics` | Ticketstatus sowie KI- und Lösungszeiten zusammenfassen |
+| POST    | `/api/tickets/{id}/similar-solution` | Ähnliche gelöste Tickets suchen und Lösung vorschlagen |
+| POST    | `/api/tickets/{id}/accept-suggested-solution` | Vorgeschlagene Lösung als hilfreich bestätigen |
+| POST    | `/api/tickets/{id}/resolve-out-of-scope` | Ticket ohne IT-Bezug als gelöst markieren |
 
 Der Standard-Provider lässt sich in `appsettings.json` über `Classification:Provider` auf
 `OpenRouter`, `Claude` oder `Keyword` setzen. Für einen direkten Vergleich kann derselbe Endpunkt
@@ -50,9 +55,24 @@ Lösungsvorschlag, Confidence, Dauer, Quelle und Modell gespeichert.
 
 OpenRouter und Claude klassifizieren ausschliesslich IT-bezogene Tickets. Bei fehlendem IT-Bezug wird kein
 Lösungsvorschlag erzeugt; die Historie weist das Ergebnis als `OutOfScope` aus.
+Während der Klassifizierung steht ein Ticket auf `InProgress`. Wird eine passende Lösung aus einem
+früheren Ticket gefunden, erhält es den Status `AnswerFound`, bis der Nutzer die Lösung bestätigt
+oder OpenRouter erneut fragt. Bei einer IT-bezogenen KI-Antwort mit
+Lösungsvorschlag wird es automatisch auf `Resolved` gesetzt; Tickets ohne IT-Bezug bleiben klassifiziert,
+aber ungelöst. Der Dashboard-Endpunkt liefert je Ticket die Dauer der letzten KI-Klassifizierung und
+fasst gelöste Tickets sowie KI- und Lösungszeiten (Durchschnitt und Summe) zusammen.
 OpenRouter-Modell und -Timeout lassen sich unter `OpenRouter:Model` und
 `OpenRouter:TimeoutSeconds` konfigurieren. API-Aufrufe können Kosten verursachen; setze beim
 jeweiligen Provider ein Ausgabenlimit.
+
+## Teamkonten
+
+Teammitglieder registrieren sich in der Oberfläche mit Anzeigename, E-Mail-Adresse und einem
+Passwort mit mindestens 10 Zeichen. Passwörter werden gehasht gespeichert; die Anmeldung läuft
+über ein HttpOnly-Sitzungscookie. Ticket- und Dashboard-Endpunkte sind nur angemeldet erreichbar.
+Neue Tickets werden dem angemeldeten Konto zugeordnet, damit die Oberfläche zwischen „Deine“ und
+„Alle“ Tickets filtern und den Ersteller anzeigen kann. Bisherige Tickets bleiben erhalten; da sie
+vor der Anmeldung erstellt wurden, ist ihr Ersteller unbekannt und sie erscheinen nur unter „Alle“.
 
 ## Struktur
 
@@ -78,10 +98,14 @@ backend/
 
 ## Aktueller Stand / nächste Schritte
 
-- **Persistenz** ist bewusst In-Memory (`InMemoryTicketRepository`, `InMemoryTicketClassificationRepository`),
-  damit ohne DB-Setup entwickelt und getestet werden kann. Da Application/Domain nur gegen die
-  Repository-Interfaces programmieren, lässt sich das später durch EF Core (z. B. SQLite) ersetzen,
-  ohne Domain/Application anzufassen.
+- **Persistenz** nutzt SQLite in `src/TicketSystem.Api/tickets.db`. Tickets und KI-Klassifizierungen
+  bleiben dadurch über Backend-Neustarts hinweg gespeichert. Die Tabellen werden beim Start automatisch
+  angelegt; ein eigener Datenbankserver ist nicht nötig. Der Pfad kann über
+  `ConnectionStrings__TicketDatabase` überschrieben werden.
+- Bei neuen Tickets sucht das Backend zuerst nach einer gelösten Anfrage mit passender Kategorie und
+  ausreichender Textähnlichkeit. Eine gefundene Lösung wird erst nach „Hat geholfen“ als gelöst markiert.
+  Andernfalls kann der Nutzer OpenRouter erneut fragen; ohne passenden Treffer startet OpenRouter
+  automatisch wie bisher.
 - **Klassifizierung** nutzt standardmässig OpenRouter, optional Claude oder ausdrücklich gewählte
   lokale Stichwortregeln. KI-Ausfälle führen nicht zu einem stillen Wechsel auf die Stichwortsuche.
   Das offizielle `Anthropic` NuGet-Paket wird ausschliesslich in Infrastructure verwendet.

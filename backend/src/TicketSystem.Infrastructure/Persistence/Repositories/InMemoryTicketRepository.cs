@@ -30,4 +30,10 @@ public class InMemoryTicketRepository : ITicketRepository
         _tickets[ticket.Id] = ticket;
         return Task.CompletedTask;
     }
+
+    public Task DeleteAllAsync(CancellationToken ct = default)
+    {
+        _tickets.Clear();
+        return Task.CompletedTask;
+    }
 }

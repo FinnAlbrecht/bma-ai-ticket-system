@@ -2,23 +2,29 @@ using Anthropic;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using TicketSystem.Application.Common.Interfaces;
 using TicketSystem.Infrastructure.Ai;
 using TicketSystem.Infrastructure.Ai.Clients;
 using TicketSystem.Domain.Classification.Repositories;
 using TicketSystem.Domain.Tickets.Repositories;
+using TicketSystem.Infrastructure.Persistence;
 using TicketSystem.Infrastructure.Persistence.Repositories;
 
 namespace TicketSystem.Infrastructure.Common;
 
 public static class InfrastructureServiceCollectionExtensions
 {
-    public static IServiceCollection AddInfrastructure(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddInfrastructure(
+        this IServiceCollection services,
+        IConfiguration configuration,
+        string databaseConnectionString)
     {
         services.Configure<AnthropicOptions>(configuration.GetSection(AnthropicOptions.SectionName));
         services.Configure<OpenRouterOptions>(configuration.GetSection(OpenRouterOptions.SectionName));
-        services.AddSingleton<ITicketRepository, InMemoryTicketRepository>();
-        services.AddSingleton<ITicketClassificationRepository, InMemoryTicketClassificationRepository>();
+        services.AddDbContext<TicketDbContext>(options => options.UseSqlite(databaseConnectionString));
+        services.AddScoped<ITicketRepository, SqliteTicketRepository>();
+        services.AddScoped<ITicketClassificationRepository, SqliteTicketClassificationRepository>();
         services.AddSingleton(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<AnthropicOptions>>().Value;

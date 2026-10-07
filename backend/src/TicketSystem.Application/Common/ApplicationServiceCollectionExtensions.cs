@@ -11,8 +11,12 @@ public static class ApplicationServiceCollectionExtensions
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
         services.AddScoped<CreateTicketCommandHandler>();
+        services.AddScoped<FindSimilarSolutionCommandHandler>();
+        services.AddScoped<AcceptSuggestedSolutionCommandHandler>();
+        services.AddScoped<ResolveOutOfScopeTicketCommandHandler>();
         services.AddScoped<GetAllTicketsQueryHandler>();
         services.AddScoped<GetTicketByIdQueryHandler>();
+        services.AddScoped<GetTicketDashboardMetricsQueryHandler>();
         services.AddScoped<ClassifyTicketCommandHandler>();
         services.AddScoped<GetTicketClassificationHistoryQueryHandler>();
         return services;

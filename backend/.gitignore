@@ -8,3 +8,6 @@ obj/
 secrets.json
 secrets.*.json
 appsettings.*.local.json
+src/TicketSystem.Api/tickets.db
+src/TicketSystem.Api/tickets.db-shm
+src/TicketSystem.Api/tickets.db-wal
