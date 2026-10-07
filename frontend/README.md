@@ -1,32 +1,29 @@
-# React + TypeScript + Vite
+# TicketDesk Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React- und TypeScript-Oberfläche für das Ticket-System. Das Frontend kann Tickets über die .NET-API
+anzeigen und erstellen, KI-Klassifizierungen anfordern und gespeicherte Klassifizierungen abrufen.
 
-Currently, two official plugins are available:
+## Voraussetzungen
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- Node.js und npm
+- Das Backend läuft unter `http://localhost:5278` (siehe [Backend-Anleitung](../backend/README.md))
 
-## React Compiler
+## Starten
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+Im Backend zuerst die API starten. Danach in einem zweiten Terminal:
 
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```powershell
+npm install
+npm run dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Öffne die lokale URL, die Vite im Terminal ausgibt. Der Vite-Proxy leitet Anfragen unter `/api`
+automatisch an `http://localhost:5278` weiter. API-Schlüssel gehören in die Backend-Konfiguration,
+nicht in das Frontend.
+
+## Prüfen
+
+```powershell
+npm run build
+npm run lint
+```

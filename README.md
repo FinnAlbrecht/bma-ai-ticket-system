@@ -18,7 +18,7 @@ Lösungszeit, im Vergleich zum menschlichen IT-Support.
 ```
 bma-ai-ticket-system/
   backend/    .NET-10-Web-API nach Domain-Driven Design (siehe backend/README.md)
-  frontend/   React-Frontend (noch in Arbeit)
+  frontend/   React-Frontend für Ticketbearbeitung und KI-Klassifizierung
 ```
 
 ## Tech-Stack
@@ -29,4 +29,24 @@ C# (.NET 10) + React, KI-API (OpenRouter oder Anthropic Claude).
 
 - **Backend:** erste funktionierende Ticket-Vertical-Slice (anlegen, auflisten, abrufen, klassifizieren)
   mit OpenRouter als Standard-Provider sowie optional Claude und expliziten Keyword-Regeln. Details siehe [backend/README.md](backend/README.md).
-- **Frontend:** noch nicht begonnen.
+- **Frontend:** React-Oberfläche für die Ticketliste, das Erstellen von Tickets sowie KI-Klassifizierung mit OpenRouter, Claude oder Keyword-Regeln.
+
+## Lokal starten
+
+Backend und Frontend benötigen je ein eigenes Terminal. Die .NET-API muss auf Port `5278` laufen;
+der Vite-Entwicklungsserver leitet `/api`-Anfragen an diese API weiter.
+
+1. Backend gemäss [backend/README.md](backend/README.md) starten.
+2. Im zweiten Terminal das Frontend starten:
+
+   ```powershell
+   cd frontend
+   npm install
+   npm run dev
+   ```
+
+3. Die im Terminal angezeigte lokale Vite-Adresse im Browser öffnen.
+
+Der API-Schlüssel wird ausschliesslich im Backend konfiguriert. Für die Klassifizierung mit OpenRouter
+oder Claude muss der jeweilige Schlüssel dort gesetzt sein; der Keyword-Provider benötigt keinen
+externen KI-Schlüssel.
