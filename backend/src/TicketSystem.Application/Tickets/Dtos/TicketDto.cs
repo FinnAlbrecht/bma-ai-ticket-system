@@ -11,7 +11,11 @@ public record TicketDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? ClassifiedAt,
     DateTimeOffset? ResolvedAt,
-    string? ResolutionNotes)
+    string? ResolutionNotes,
+    string? SuggestedResolution,
+    Guid? SolutionSourceTicketId,
+    Guid? CreatedByUserId,
+    string? CreatedByName)
 {
     public static TicketDto FromDomain(Ticket ticket) => new(
         ticket.Id,
@@ -22,5 +26,9 @@ public record TicketDto(
         ticket.CreatedAt,
         ticket.ClassifiedAt,
         ticket.ResolvedAt,
-        ticket.ResolutionNotes);
+        ticket.ResolutionNotes,
+        ticket.SuggestedResolution,
+        ticket.SolutionSourceTicketId,
+        ticket.CreatedByUserId,
+        ticket.CreatedByName);
 }

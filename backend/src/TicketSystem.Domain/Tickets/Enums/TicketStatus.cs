@@ -6,5 +6,6 @@ public enum TicketStatus
     Classified,
     InProgress,
     Resolved,
-    Closed
+    Closed,
+    AnswerFound
 }

@@ -30,6 +30,9 @@ public class ClassifyTicketCommandHandler
         var ticket = await _ticketRepository.GetByIdAsync(command.TicketId, ct)
             ?? throw new TicketNotFoundException(command.TicketId);
 
+        ticket.StartProcessing();
+        await _ticketRepository.UpdateAsync(ticket, ct);
+
         var classificationService = _classificationServiceResolver.Resolve(command.Provider);
         var outcome = await classificationService.ClassifyAsync(ticket.Title, ticket.Description, ct);
 
@@ -46,6 +49,8 @@ public class ClassifyTicketCommandHandler
         await _classificationRepository.AddAsync(classification, ct);
 
         ticket.ApplyClassification(outcome.Category);
+        if (outcome.IsItRelated && !string.IsNullOrWhiteSpace(outcome.SuggestedSolution))
+            ticket.Resolve(outcome.SuggestedSolution);
         await _ticketRepository.UpdateAsync(ticket, ct);
 
         return new ClassificationResultDto(

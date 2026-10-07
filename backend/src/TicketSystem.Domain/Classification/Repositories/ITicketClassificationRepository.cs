@@ -6,4 +6,5 @@ public interface ITicketClassificationRepository
 {
     Task AddAsync(TicketClassification classification, CancellationToken ct = default);
     Task<IReadOnlyList<TicketClassification>> GetByTicketIdAsync(Guid ticketId, CancellationToken ct = default);
+    Task<IReadOnlyList<TicketClassification>> GetAllAsync(CancellationToken ct = default);
 }

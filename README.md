@@ -27,9 +27,8 @@ C# (.NET 10) + React, KI-API (OpenRouter oder Anthropic Claude).
 
 ## Stand
 
-- **Backend:** erste funktionierende Ticket-Vertical-Slice (anlegen, auflisten, abrufen, klassifizieren)
-  mit OpenRouter als Standard-Provider sowie optional Claude und expliziten Keyword-Regeln. Details siehe [backend/README.md](backend/README.md).
-- **Frontend:** React-Oberfläche für die Ticketliste, das Erstellen von Tickets sowie KI-Klassifizierung mit OpenRouter, Claude oder Keyword-Regeln.
+- **Backend:** SQLite speichert Konten, Tickets und KI-Klassifizierungen dauerhaft. Teammitglieder melden sich mit E-Mail und Passwort an; Tickets werden ihrem Ersteller zugeordnet. Ähnliche gelöste Tickets können ihre Lösung wiederverwenden und als hilfreich bestätigt werden. Details siehe [backend/README.md](backend/README.md).
+- **Frontend:** React-Oberfläche mit den Ticketansichten „Deine“ und „Alle“, Erstelleranzeige und separatem Dashboard-Tab: Ticketzeiten einzeln, Anzahl gelöster Tickets, gesamte Lösungszeit und durchschnittliche Geschwindigkeit. Neue Tickets startet es automatisch mit OpenRouter.
 
 ## Lokal starten
 

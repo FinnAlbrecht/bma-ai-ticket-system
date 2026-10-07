@@ -4,6 +4,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Data.Sqlite;
 using TicketSystem.Api.Controllers;
 using TicketSystem.Application.Classification.Commands;
 using TicketSystem.Application.Classification.Queries;
@@ -15,6 +17,7 @@ using TicketSystem.Domain.Tickets.Entities;
 using TicketSystem.Domain.Tickets.Enums;
 using TicketSystem.Infrastructure.Ai;
 using TicketSystem.Infrastructure.Ai.Clients;
+using TicketSystem.Infrastructure.Persistence;
 using TicketSystem.Infrastructure.Persistence.Repositories;
 
 namespace TicketSystem.Tests;
@@ -193,12 +196,17 @@ public class ClaudeClassificationServiceTests
             new GetAllTicketsQueryHandler(ticketRepository),
             new GetTicketByIdQueryHandler(ticketRepository),
             handler,
-            new GetTicketClassificationHistoryQueryHandler(ticketRepository, classificationRepository));
+            new GetTicketClassificationHistoryQueryHandler(ticketRepository, classificationRepository),
+            new FindSimilarSolutionCommandHandler(ticketRepository),
+            new AcceptSuggestedSolutionCommandHandler(ticketRepository),
+            new ResolveOutOfScopeTicketCommandHandler(ticketRepository),
+            ticketRepository);
 
         var response = await controller.Classify(ticket.Id, "claude", CancellationToken.None);
 
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, result.StatusCode);
+        Assert.Equal(TicketStatus.InProgress, ticket.Status);
     }
 
     [Fact]
@@ -234,6 +242,354 @@ public class ClaudeClassificationServiceTests
         Assert.Contains(history, result =>
             result.Source.ToString() == "Keyword"
             && result.Model == "keyword-rules-v1");
+    }
+
+    [Fact]
+    public async Task Handler_MovesTicketThroughProcessingToResolvedWhenAiProvidesSolution()
+    {
+        var ticketRepository = new InMemoryTicketRepository();
+        var classificationRepository = new InMemoryTicketClassificationRepository();
+        var ticket = new Ticket("Passwort", "Login schlägt fehl.");
+        await ticketRepository.AddAsync(ticket);
+        var service = CreateService(ValidResponse, out _);
+        var handler = new ClassifyTicketCommandHandler(
+            ticketRepository,
+            classificationRepository,
+            new FixedResolver(service));
+
+        await handler.HandleAsync(new ClassifyTicketCommand(ticket.Id));
+
+        Assert.Equal(TicketStatus.Resolved, ticket.Status);
+        Assert.Equal("Passwort zurücksetzen.", ticket.ResolutionNotes);
+        Assert.NotNull(ticket.ResolvedAt);
+    }
+
+    [Fact]
+    public async Task Handler_LeavesNonItTicketClassifiedButUnresolved()
+    {
+        var ticketRepository = new InMemoryTicketRepository();
+        var classificationRepository = new InMemoryTicketClassificationRepository();
+        var ticket = new Ticket("Rezept", "Wie koche ich Spaghetti?");
+        await ticketRepository.AddAsync(ticket);
+        var service = CreateService(
+            """{"isItRelated":false,"category":"OutOfScope","solution":"","confidence":0}""",
+            out _);
+        var handler = new ClassifyTicketCommandHandler(
+            ticketRepository,
+            classificationRepository,
+            new FixedResolver(service));
+
+        await handler.HandleAsync(new ClassifyTicketCommand(ticket.Id));
+
+        Assert.Equal(TicketStatus.Classified, ticket.Status);
+        Assert.Null(ticket.ResolvedAt);
+        Assert.Null(ticket.ResolutionNotes);
+    }
+
+    [Fact]
+    public async Task DashboardMetrics_SummarizeLatestAiAndResolvedDurations()
+    {
+        var ticketRepository = new InMemoryTicketRepository();
+        var classificationRepository = new InMemoryTicketClassificationRepository();
+        var ticket = new Ticket("Passwort", "Login schlägt fehl.");
+        ticket.StartProcessing();
+        ticket.ApplyClassification(TicketCategory.PasswordReset);
+        ticket.Resolve("Passwort zurücksetzen.");
+        await ticketRepository.AddAsync(ticket);
+        await classificationRepository.AddAsync(new TicketSystem.Domain.Classification.Entities.TicketClassification(
+            ticket.Id,
+            TicketCategory.PasswordReset,
+            new TicketSystem.Domain.Classification.ValueObjects.ClassificationConfidence(0.9),
+            "Passwort zurücksetzen.",
+            TicketSystem.Domain.Classification.Enums.ClassificationSource.Ai,
+            TimeSpan.FromSeconds(2),
+            "test-model",
+            true));
+        await classificationRepository.AddAsync(new TicketSystem.Domain.Classification.Entities.TicketClassification(
+            ticket.Id,
+            TicketCategory.PasswordReset,
+            new TicketSystem.Domain.Classification.ValueObjects.ClassificationConfidence(0.9),
+            "Passwort zurücksetzen.",
+            TicketSystem.Domain.Classification.Enums.ClassificationSource.Keyword,
+            TimeSpan.FromSeconds(1),
+            "keyword-rules-v1",
+            true));
+        var handler = new GetTicketDashboardMetricsQueryHandler(ticketRepository, classificationRepository);
+
+        var metrics = await handler.HandleAsync(new GetTicketDashboardMetricsQuery());
+
+        Assert.Equal(1, metrics.TotalTickets);
+        Assert.Equal(0, metrics.InProgressTickets);
+        Assert.Equal(1, metrics.ResolvedTickets);
+        Assert.Equal(2000, metrics.AverageAiDurationMilliseconds);
+        Assert.Equal(metrics.AverageAiDurationMilliseconds, metrics.TotalAiDurationMilliseconds);
+        var ticketMetrics = Assert.Single(metrics.Tickets);
+        Assert.Equal(ticket.Id, ticketMetrics.Id);
+        Assert.Equal(2000, ticketMetrics.AiDurationMilliseconds);
+        Assert.Equal(TicketStatus.Resolved.ToString(), ticketMetrics.Status);
+        Assert.True(metrics.TotalResolutionMilliseconds >= metrics.AverageResolutionMilliseconds);
+        Assert.Equal(metrics.AverageResolutionMilliseconds, metrics.TotalResolutionMilliseconds);
+    }
+
+    [Fact]
+    public async Task SimilarSolutionHandler_SuggestsResolvedTicketAndAcceptanceResolvesNewTicket()
+    {
+        var repository = new InMemoryTicketRepository();
+        var resolvedTicket = new Ticket("Drucker druckt keine Dokumente", "Bürodrucker zieht Papier ein, aber der Ausdruck bleibt leer.");
+        resolvedTicket.ApplyClassification(TicketCategory.PrinterIssue);
+        resolvedTicket.Resolve("Druckwarteschlange leeren und Drucker neu starten.");
+        var newTicket = new Ticket("Drucker druckt keine Dokumente", "Der Bürodrucker zieht Papier ein, aber es kommt kein Ausdruck.");
+        await repository.AddAsync(resolvedTicket);
+        await repository.AddAsync(newTicket);
+        var findHandler = new FindSimilarSolutionCommandHandler(repository);
+
+        var suggestion = await findHandler.HandleAsync(new FindSimilarSolutionCommand(newTicket.Id));
+
+        Assert.True(suggestion.Found);
+        Assert.Equal(resolvedTicket.Id, suggestion.SourceTicketId);
+        Assert.Equal(TicketStatus.AnswerFound.ToString(), suggestion.Ticket.Status);
+        Assert.Equal(resolvedTicket.ResolutionNotes, suggestion.Ticket.SuggestedResolution);
+
+        var acceptHandler = new AcceptSuggestedSolutionCommandHandler(repository);
+        var updated = await acceptHandler.HandleAsync(new AcceptSuggestedSolutionCommand(newTicket.Id));
+
+        Assert.Equal(TicketStatus.Resolved.ToString(), updated.Status);
+        Assert.Equal(resolvedTicket.ResolutionNotes, updated.ResolutionNotes);
+        Assert.NotNull(updated.ResolvedAt);
+    }
+
+    [Fact]
+    public async Task SimilarSolutionHandler_DoesNotSuggestDifferentCategory()
+    {
+        var repository = new InMemoryTicketRepository();
+        var resolvedTicket = new Ticket("Drucker druckt keine Dokumente", "Bürodrucker zieht Papier ein, aber der Ausdruck bleibt leer.");
+        resolvedTicket.ApplyClassification(TicketCategory.PrinterIssue);
+        resolvedTicket.Resolve("Druckwarteschlange leeren.");
+        var newTicket = new Ticket("WLAN verbindet nicht", "WLAN-Verbindung im Büro schlägt fehl.");
+        await repository.AddAsync(resolvedTicket);
+        await repository.AddAsync(newTicket);
+
+        var suggestion = await new FindSimilarSolutionCommandHandler(repository)
+            .HandleAsync(new FindSimilarSolutionCommand(newTicket.Id));
+
+        Assert.False(suggestion.Found);
+        Assert.Equal(TicketStatus.New.ToString(), suggestion.Ticket.Status);
+    }
+
+    [Fact]
+    public async Task ResolveOutOfScopeHandler_ResolvesOnlyOutOfScopeTickets()
+    {
+        var repository = new InMemoryTicketRepository();
+        var outOfScopeTicket = new Ticket("Essensbestellung", "Bitte bestelle Mittagessen für das Team.");
+        outOfScopeTicket.ApplyClassification(TicketCategory.OutOfScope);
+        await repository.AddAsync(outOfScopeTicket);
+        var handler = new ResolveOutOfScopeTicketCommandHandler(repository);
+
+        var resolvedTicket = await handler.HandleAsync(new ResolveOutOfScopeTicketCommand(outOfScopeTicket.Id));
+
+        Assert.Equal(TicketStatus.Resolved.ToString(), resolvedTicket.Status);
+        Assert.NotNull(resolvedTicket.ResolvedAt);
+
+        var itTicket = new Ticket("WLAN funktioniert nicht", "Die Verbindung zum WLAN bricht ab.");
+        itTicket.ApplyClassification(TicketCategory.WifiConnectivity);
+        await repository.AddAsync(itTicket);
+
+        await Assert.ThrowsAsync<ArgumentException>(
+            () => handler.HandleAsync(new ResolveOutOfScopeTicketCommand(itTicket.Id)));
+    }
+
+    [Fact]
+    public async Task DashboardMetrics_CountAnswerFoundTicketsAsInProgress()
+    {
+        var ticketRepository = new InMemoryTicketRepository();
+        var answerFoundTicket = new Ticket("Druckerproblem", "Der Drucker druckt nicht.");
+        answerFoundTicket.SuggestSimilarResolution(
+            TicketCategory.PrinterIssue,
+            "Druckwarteschlange leeren.",
+            Guid.NewGuid());
+        await ticketRepository.AddAsync(answerFoundTicket);
+        var outOfScopeInProgress = Ticket.Reconstitute(
+            Guid.NewGuid(),
+            "Mittagessen",
+            "Bitte bestelle Essen fürs Team.",
+            TicketCategory.OutOfScope,
+            TicketStatus.InProgress,
+            DateTimeOffset.UtcNow,
+            DateTimeOffset.UtcNow,
+            null,
+            null,
+            null,
+            null);
+        await ticketRepository.AddAsync(outOfScopeInProgress);
+
+        var metrics = await new GetTicketDashboardMetricsQueryHandler(
+                ticketRepository,
+                new InMemoryTicketClassificationRepository())
+            .HandleAsync(new GetTicketDashboardMetricsQuery());
+
+        Assert.Equal(2, metrics.Tickets.Count);
+        Assert.Equal(1, metrics.InProgressTickets);
+    }
+
+    [Fact]
+    public async Task SqliteRepositories_PersistTicketsAndClassificationsAcrossContexts()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"ticket-system-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<TicketDbContext>()
+            .UseSqlite($"Data Source={databasePath};Pooling=False")
+            .Options;
+        var ownerId = Guid.NewGuid();
+        var ticket = new Ticket("Passwort zurücksetzen", "Der Login schlägt fehl.", ownerId, "Finn");
+        var classification = new TicketSystem.Domain.Classification.Entities.TicketClassification(
+            ticket.Id,
+            TicketCategory.PasswordReset,
+            new TicketSystem.Domain.Classification.ValueObjects.ClassificationConfidence(0.91),
+            "Passwort zurücksetzen.",
+            TicketSystem.Domain.Classification.Enums.ClassificationSource.Ai,
+            TimeSpan.FromSeconds(2),
+            "test-model",
+            true);
+
+        try
+        {
+            await using (var dbContext = new TicketDbContext(options))
+            {
+                await dbContext.Database.EnsureCreatedAsync();
+                await new SqliteTicketRepository(dbContext).AddAsync(ticket);
+                await new SqliteTicketClassificationRepository(dbContext).AddAsync(classification);
+            }
+
+            await using (var dbContext = new TicketDbContext(options))
+            {
+                var persistedTicket = await new SqliteTicketRepository(dbContext).GetByIdAsync(ticket.Id);
+                var persistedHistory = await new SqliteTicketClassificationRepository(dbContext).GetByTicketIdAsync(ticket.Id);
+
+                Assert.NotNull(persistedTicket);
+                Assert.Equal(ticket.Id, persistedTicket.Id);
+                Assert.Equal(ticket.CreatedAt, persistedTicket.CreatedAt);
+                Assert.Equal(ownerId, persistedTicket.CreatedByUserId);
+                Assert.Equal("Finn", persistedTicket.CreatedByName);
+                Assert.Single(persistedHistory);
+                Assert.Equal(classification.Id, persistedHistory[0].Id);
+                Assert.Equal(classification.Duration, persistedHistory[0].Duration);
+            }
+        }
+        finally
+        {
+            if (File.Exists(databasePath)) File.Delete(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task SqliteClassificationHandler_UpdatesTicketMoreThanOnceInSameContext()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"ticket-system-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<TicketDbContext>()
+            .UseSqlite($"Data Source={databasePath};Pooling=False")
+            .Options;
+        var ticket = new Ticket("Drucker druckt nicht", "Der Drucker kann keine Dokumente drucken.");
+
+        try
+        {
+            await using var dbContext = new TicketDbContext(options);
+            await dbContext.Database.EnsureCreatedAsync();
+            var ticketRepository = new SqliteTicketRepository(dbContext);
+            await ticketRepository.AddAsync(ticket);
+
+            var handler = new ClassifyTicketCommandHandler(
+                ticketRepository,
+                new SqliteTicketClassificationRepository(dbContext),
+                new FixedResolver(new KeywordBasedClassificationService()));
+
+            await handler.HandleAsync(new ClassifyTicketCommand(ticket.Id, "keyword"));
+
+            var persistedTicket = await ticketRepository.GetByIdAsync(ticket.Id);
+            var persistedHistory = await new SqliteTicketClassificationRepository(dbContext).GetByTicketIdAsync(ticket.Id);
+
+            Assert.NotNull(persistedTicket);
+            Assert.Equal(TicketStatus.Resolved, persistedTicket.Status);
+            Assert.Equal(TicketCategory.PrinterIssue, persistedTicket.Category);
+            Assert.Single(persistedHistory);
+        }
+        finally
+        {
+            if (File.Exists(databasePath)) File.Delete(databasePath);
+        }
+    }
+
+    [Fact]
+    public async Task SqliteInitializer_AddsOwnershipSchemaWithoutDroppingExistingTickets()
+    {
+        var databasePath = Path.Combine(Path.GetTempPath(), $"ticket-system-legacy-{Guid.NewGuid():N}.db");
+        var options = new DbContextOptionsBuilder<TicketDbContext>()
+            .UseSqlite($"Data Source={databasePath};Pooling=False")
+            .Options;
+        var existingTicketId = Guid.NewGuid();
+
+        try
+        {
+            await using (var connection = new SqliteConnection($"Data Source={databasePath};Pooling=False"))
+            {
+                await connection.OpenAsync();
+                await using var command = connection.CreateCommand();
+                command.CommandText =
+                    """
+                    CREATE TABLE "Tickets" (
+                        "Id" TEXT NOT NULL PRIMARY KEY,
+                        "Title" TEXT NOT NULL,
+                        "Description" TEXT NOT NULL,
+                        "Category" TEXT NOT NULL,
+                        "Status" TEXT NOT NULL,
+                        "CreatedAt" INTEGER NOT NULL,
+                        "ClassifiedAt" INTEGER NULL,
+                        "ResolvedAt" INTEGER NULL,
+                        "ResolutionNotes" TEXT NULL,
+                        "SuggestedResolution" TEXT NULL,
+                        "SolutionSourceTicketId" TEXT NULL
+                    );
+                    CREATE TABLE "Classifications" (
+                        "Id" TEXT NOT NULL PRIMARY KEY,
+                        "TicketId" TEXT NOT NULL,
+                        "Category" TEXT NOT NULL,
+                        "Confidence" REAL NOT NULL,
+                        "SuggestedSolution" TEXT NOT NULL,
+                        "Source" TEXT NOT NULL,
+                        "Model" TEXT NOT NULL,
+                        "IsItRelated" INTEGER NOT NULL,
+                        "DurationMilliseconds" INTEGER NOT NULL,
+                        "CreatedAt" INTEGER NOT NULL
+                    );
+                    INSERT INTO "Tickets" ("Id", "Title", "Description", "Category", "Status", "CreatedAt")
+                    VALUES ($id, 'Altes Ticket', 'Vor der Anmeldung erstellt', 'Unclassified', 'New', $createdAt);
+                    """;
+                command.Parameters.AddWithValue("$id", existingTicketId);
+                command.Parameters.AddWithValue("$createdAt", DateTimeOffset.UtcNow.UtcDateTime.Ticks);
+                await command.ExecuteNonQueryAsync();
+            }
+
+            await using var dbContext = new TicketDbContext(options);
+            await TicketDatabaseInitializer.InitializeAsync(dbContext);
+            await TicketDatabaseInitializer.InitializeAsync(dbContext);
+
+            var ticketRepository = new SqliteTicketRepository(dbContext);
+            var existingTicket = await ticketRepository.GetByIdAsync(existingTicketId);
+            Assert.NotNull(existingTicket);
+            Assert.Equal("Altes Ticket", existingTicket.Title);
+            Assert.Null(existingTicket.CreatedByUserId);
+            Assert.Null(existingTicket.CreatedByName);
+
+            var ownerId = Guid.NewGuid();
+            var newTicket = new Ticket("Neues Teamticket", "Ersteller bleibt gespeichert.", ownerId, "Teammitglied");
+            await ticketRepository.AddAsync(newTicket);
+            var persistedTicket = await ticketRepository.GetByIdAsync(newTicket.Id);
+            Assert.NotNull(persistedTicket);
+            Assert.Equal(ownerId, persistedTicket.CreatedByUserId);
+            Assert.Equal("Teammitglied", persistedTicket.CreatedByName);
+        }
+        finally
+        {
+            if (File.Exists(databasePath)) File.Delete(databasePath);
+        }
     }
 
     [Fact(Skip = "manuell")]

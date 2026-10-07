@@ -15,7 +15,7 @@ public class CreateTicketCommandHandler
 
     public async Task<TicketDto> HandleAsync(CreateTicketCommand command, CancellationToken ct = default)
     {
-        var ticket = new Ticket(command.Title, command.Description);
+        var ticket = new Ticket(command.Title, command.Description, command.CreatedByUserId, command.CreatedByName);
         await _ticketRepository.AddAsync(ticket, ct);
         return TicketDto.FromDomain(ticket);
     }
