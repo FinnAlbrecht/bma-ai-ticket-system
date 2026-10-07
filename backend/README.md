@@ -15,10 +15,11 @@ OpenRouter ist der Standard-Provider. Den API-Key lokal als User-Secret setzen:
 dotnet user-secrets set "OpenRouter:ApiKey" "<dein-openrouter-api-key>" --project src/TicketSystem.Api
 ```
 
-Standardmodell ist `nvidia/nemotron-3-ultra-550b-a55b`. Wenn der API-Key bereits geteilt oder
+Standardmodell ist `nvidia/nemotron-3-ultra-550b-a55b:free`. Wenn der API-Key bereits geteilt oder
 veröffentlicht wurde, widerrufe ihn zuerst und verwende nur einen neu erstellten Key. Das Modell
 kann bei OpenRouter geändert werden; prüfe dort den aktuellen Gratis-Status, verfügbare Credits und
-Nutzungslimits.
+Nutzungslimits. Das freie Modell kann auf OpenRouter mit der `:free`-Suffix-Variante angegeben werden,
+beispielsweise `nvidia/nemotron-3-ultra-550b-a55b:free`.
 
 Alternativ kann die Umgebungsvariable `OpenRouter__ApiKey` gesetzt werden. Für Claude:
 `Anthropic:ApiKey` beziehungsweise `Anthropic__ApiKey`. API-Keys gehören nicht in versionierte

@@ -10,6 +10,75 @@ namespace TicketSystem.Tests;
 public class OpenRouterMessageClientTests
 {
     [Fact]
+    public async Task CreateMessageAsync_PreservesUpstreamHttpStatus()
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.Unauthorized)));
+        using var httpClient = new HttpClient(handler);
+        var client = new OpenRouterMessageClient(
+            httpClient,
+            Options.Create(new OpenRouterOptions { ApiKey = "test-key" }));
+
+        var exception = await Assert.ThrowsAsync<HttpRequestException>(
+            () => client.CreateMessageAsync("system", "user", CancellationToken.None));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, exception.StatusCode);
+    }
+
+    [Fact]
+    public async Task CreateMessageAsync_ExplainsSuccessfulResponseWithoutMessageContent()
+    {
+        var handler = new StubHttpMessageHandler(_ => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"choices":[{"message":{"reasoning":"internal"},"finish_reason":"length"}]}""")
+            }));
+        using var httpClient = new HttpClient(handler);
+        var client = new OpenRouterMessageClient(
+            httpClient,
+            Options.Create(new OpenRouterOptions { ApiKey = "test-key" }));
+
+        var exception = await Assert.ThrowsAsync<InvalidDataException>(
+            () => client.CreateMessageAsync("system", "user", CancellationToken.None));
+
+        Assert.Contains("did not contain usable 'content'", exception.Message);
+        Assert.Contains("reasoning", exception.Message);
+        Assert.Contains("finish_reason: length", exception.Message);
+    }
+
+    [Fact]
+    public async Task CreateMessageAsync_RetriesTransientHttpFailures()
+    {
+        var attempts = 0;
+        var handler = new StubHttpMessageHandler(_ =>
+        {
+            attempts++;
+            if (attempts == 1)
+            {
+                throw new HttpRequestException("temporary upstream issue", null, HttpStatusCode.ServiceUnavailable);
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"choices":[{"message":{"content":"retry worked"}}]}""",
+                    Encoding.UTF8,
+                    "application/json")
+            });
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = new OpenRouterMessageClient(
+            httpClient,
+            Options.Create(new OpenRouterOptions { ApiKey = "test-key" }));
+
+        var result = await client.CreateMessageAsync("system", "user", CancellationToken.None);
+
+        Assert.Equal("retry worked", result);
+        Assert.Equal(2, attempts);
+    }
+
+    [Fact]
     public async Task CreateMessageAsync_SendsChatCompletionRequestAndReturnsModelText()
     {
         HttpRequestMessage? capturedRequest = null;

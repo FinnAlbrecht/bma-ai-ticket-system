@@ -48,9 +48,37 @@ public sealed class OpenRouterClassificationService(
             logger.LogError("OpenRouter classification request timed out ({ExceptionType}).", ex.GetType().Name);
             throw new ClassificationUnavailableException();
         }
-        catch (Exception ex) when (ex is TimeoutException or HttpRequestException or JsonException)
+        catch (HttpRequestException ex)
         {
-            logger.LogError("OpenRouter classification request failed ({ExceptionType}).", ex.GetType().Name);
+            logger.LogError(
+                "OpenRouter request for model {Model} failed with HTTP status {StatusCode} ({ExceptionType}).",
+                _options.Model,
+                ex.StatusCode is null ? null : (int)ex.StatusCode.Value,
+                ex.GetType().Name);
+            throw new ClassificationUnavailableException();
+        }
+        catch (JsonException ex)
+        {
+            logger.LogError(
+                "OpenRouter returned an invalid response for model {Model} ({ExceptionType}).",
+                _options.Model,
+                ex.GetType().Name);
+            throw new ClassificationUnavailableException();
+        }
+        catch (InvalidDataException ex)
+        {
+            logger.LogError(
+                "OpenRouter returned HTTP success but an unexpected completion format for model {Model}: {Details}",
+                _options.Model,
+                ex.Message);
+            throw new ClassificationUnavailableException();
+        }
+        catch (TimeoutException ex)
+        {
+            logger.LogError(
+                "OpenRouter request for model {Model} timed out ({ExceptionType}).",
+                _options.Model,
+                ex.GetType().Name);
             throw new ClassificationUnavailableException();
         }
     }
