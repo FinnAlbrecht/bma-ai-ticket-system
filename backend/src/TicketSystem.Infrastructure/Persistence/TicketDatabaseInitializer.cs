@@ -7,6 +7,9 @@ public static class TicketDatabaseInitializer
     public static async Task InitializeAsync(TicketDbContext database, CancellationToken ct = default)
     {
         await database.Database.EnsureCreatedAsync(ct);
+        if (!database.Database.IsSqlite())
+            return;
+
         await database.Database.ExecuteSqlRawAsync(
             """
             CREATE TABLE IF NOT EXISTS "Users" (

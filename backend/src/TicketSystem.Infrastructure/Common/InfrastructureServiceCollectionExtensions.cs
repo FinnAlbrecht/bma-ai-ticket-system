@@ -18,11 +18,20 @@ public static class InfrastructureServiceCollectionExtensions
     public static IServiceCollection AddInfrastructure(
         this IServiceCollection services,
         IConfiguration configuration,
-        string databaseConnectionString)
+        string databaseConnectionString,
+        string databaseProvider)
     {
         services.Configure<AnthropicOptions>(configuration.GetSection(AnthropicOptions.SectionName));
         services.Configure<OpenRouterOptions>(configuration.GetSection(OpenRouterOptions.SectionName));
-        services.AddDbContext<TicketDbContext>(options => options.UseSqlite(databaseConnectionString));
+        services.AddDbContext<TicketDbContext>(options =>
+        {
+            if (string.Equals(databaseProvider, "PostgreSQL", StringComparison.OrdinalIgnoreCase))
+                options.UseNpgsql(databaseConnectionString);
+            else if (string.Equals(databaseProvider, "Sqlite", StringComparison.OrdinalIgnoreCase))
+                options.UseSqlite(databaseConnectionString);
+            else
+                throw new InvalidOperationException($"Unbekannter Datenbankanbieter: {databaseProvider}");
+        });
         services.AddScoped<ITicketRepository, SqliteTicketRepository>();
         services.AddScoped<ITicketClassificationRepository, SqliteTicketClassificationRepository>();
         services.AddSingleton(serviceProvider =>

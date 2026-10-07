@@ -1,6 +1,7 @@
 using TicketSystem.Application.Common;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
+using Npgsql;
 using TicketSystem.Infrastructure.Common;
 using TicketSystem.Infrastructure.Persistence;
 
@@ -39,11 +40,20 @@ builder.Services.AddAuthorization();
 builder.Services.AddScoped<IPasswordHasher<UserRecord>, PasswordHasher<UserRecord>>();
 
 builder.Services.AddApplication();
-var databasePath = Path.Combine(builder.Environment.ContentRootPath, "tickets.db");
+var databaseProvider = builder.Configuration["Database:Provider"] ?? "Sqlite";
 var databaseConnectionString = builder.Configuration.GetConnectionString("TicketDatabase");
-if (string.IsNullOrWhiteSpace(databaseConnectionString))
+if (!string.IsNullOrWhiteSpace(databaseConnectionString))
+    databaseConnectionString = NormalizePostgreSqlConnectionString(databaseConnectionString, databaseProvider);
+
+if (string.Equals(databaseProvider, "Sqlite", StringComparison.OrdinalIgnoreCase)
+    && string.IsNullOrWhiteSpace(databaseConnectionString))
+{
+    var databasePath = Path.Combine(builder.Environment.ContentRootPath, "tickets.db");
     databaseConnectionString = $"Data Source={databasePath}";
-builder.Services.AddInfrastructure(builder.Configuration, databaseConnectionString);
+}
+if (string.IsNullOrWhiteSpace(databaseConnectionString))
+    throw new InvalidOperationException("ConnectionStrings:TicketDatabase muss für den gewählten Datenbankanbieter gesetzt sein.");
+builder.Services.AddInfrastructure(builder.Configuration, databaseConnectionString, databaseProvider);
 
 var app = builder.Build();
 
@@ -72,15 +82,44 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
+app.UseDefaultFiles();
+app.UseStaticFiles();
 app.UseHttpsRedirection();
 
 app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapFallbackToFile("dashboard", "index.html");
+app.MapFallbackToFile("tickets/{*path:nonfile}", "index.html");
 
 app.Run();
 
 static bool IsMissingApiKey(string? apiKey) =>
     string.IsNullOrWhiteSpace(apiKey)
     || string.Equals(apiKey.Trim(), "XXXXX", StringComparison.Ordinal);
+
+static string NormalizePostgreSqlConnectionString(string connectionString, string provider)
+{
+    if (!string.Equals(provider, "PostgreSQL", StringComparison.OrdinalIgnoreCase)
+        || !Uri.TryCreate(connectionString, UriKind.Absolute, out var uri)
+        || uri.Scheme is not ("postgres" or "postgresql"))
+    {
+        return connectionString;
+    }
+
+    var credentials = uri.UserInfo.Split(':', 2);
+    var database = Uri.UnescapeDataString(uri.AbsolutePath.TrimStart('/'));
+    if (credentials.Length != 2 || string.IsNullOrWhiteSpace(database))
+        throw new InvalidOperationException("Die PostgreSQL-URL enthält keinen gültigen Benutzernamen, Passwort oder Datenbanknamen.");
+
+    return new NpgsqlConnectionStringBuilder
+    {
+        Host = uri.Host,
+        Port = uri.Port > 0 ? uri.Port : 5432,
+        Database = database,
+        Username = Uri.UnescapeDataString(credentials[0]),
+        Password = Uri.UnescapeDataString(credentials[1]),
+        SslMode = SslMode.VerifyFull
+    }.ConnectionString;
+}

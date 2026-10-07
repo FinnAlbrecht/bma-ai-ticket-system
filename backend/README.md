@@ -102,6 +102,8 @@ backend/
   bleiben dadurch über Backend-Neustarts hinweg gespeichert. Die Tabellen werden beim Start automatisch
   angelegt; ein eigener Datenbankserver ist nicht nötig. Der Pfad kann über
   `ConnectionStrings__TicketDatabase` überschrieben werden.
+- Für Deployments kann `Database__Provider=PostgreSQL` und
+  `ConnectionStrings__TicketDatabase` gesetzt werden. Lokal bleibt SQLite der Standard.
 - Bei neuen Tickets sucht das Backend zuerst nach einer gelösten Anfrage mit passender Kategorie und
   ausreichender Textähnlichkeit. Eine gefundene Lösung wird erst nach „Hat geholfen“ als gelöst markiert.
   Andernfalls kann der Nutzer OpenRouter erneut fragen; ohne passenden Treffer startet OpenRouter

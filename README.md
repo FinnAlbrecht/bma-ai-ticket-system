@@ -49,3 +49,25 @@ der Vite-Entwicklungsserver leitet `/api`-Anfragen an diese API weiter.
 Der API-Schlüssel wird ausschliesslich im Backend konfiguriert. Für die Klassifizierung mit OpenRouter
 oder Claude muss der jeweilige Schlüssel dort gesetzt sein; der Keyword-Provider benötigt keinen
 externen KI-Schlüssel.
+
+## Kostenlos online bereitstellen
+
+Das Repository enthält eine Render-Konfiguration (`render.yaml`) und ein Dockerfile. Für dauerhaft
+gespeicherte Tickets wird eine PostgreSQL-Datenbank bei Neon verwendet; die Anwendung kann lokal
+weiterhin SQLite nutzen.
+
+1. Erstelle ein kostenloses PostgreSQL-Projekt bei [Neon](https://neon.tech/) und kopiere dessen
+   PostgreSQL-Verbindungs-URL.
+2. Verbinde dieses GitHub-Repository in [Render](https://render.com/) über **New → Blueprint**.
+   Render liest `render.yaml` und baut Frontend und Backend gemeinsam.
+3. Hinterlege im Render-Service `ConnectionStrings__TicketDatabase` mit der Neon-Verbindungs-URL
+   sowie `OpenRouter__ApiKey` mit deinem OpenRouter-Schlüssel. Niemals Schlüssel ins Repository
+   oder in den Chat schreiben.
+4. Nach erfolgreichem Build ist die von Render angezeigte URL die öffentliche Anwendung. Der erste
+   Aufruf kann auf dem kostenlosen Tarif verzögert starten; kostenlose Tarife und Limits können sich
+   ändern.
+
+Die gehostete Datenbank startet leer; lokale SQLite-Tickets werden nicht automatisch übertragen.
+Die Registrierung ist öffentlich und angemeldete Nutzer können Team-Tickets sehen und löschen.
+Verwende deshalb keine vertraulichen oder personenbezogenen Ticketinhalte und teile die URL nur,
+wenn dieser Zugriff für dein Team in Ordnung ist.
