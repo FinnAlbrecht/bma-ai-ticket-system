@@ -23,10 +23,10 @@ bma-ai-ticket-system/
 
 ## Tech-Stack
 
-C# (.NET 10) + React, KI-API (Anthropic Claude API oder OpenAI API).
+C# (.NET 10) + React, KI-API (OpenRouter oder Anthropic Claude).
 
 ## Stand
 
 - **Backend:** erste funktionierende Ticket-Vertical-Slice (anlegen, auflisten, abrufen, klassifizieren)
-  auf Basis einer regelbasierten Platzhalter-Klassifizierung. Details siehe [backend/README.md](backend/README.md).
+  mit OpenRouter als Standard-Provider sowie optional Claude und expliziten Keyword-Regeln. Details siehe [backend/README.md](backend/README.md).
 - **Frontend:** noch nicht begonnen.

@@ -17,6 +17,8 @@ public class TicketClassification
     public ClassificationConfidence Confidence { get; private set; }
     public string SuggestedSolution { get; private set; } = string.Empty;
     public ClassificationSource Source { get; private set; }
+    public string Model { get; private set; } = string.Empty;
+    public bool IsItRelated { get; private set; }
     public TimeSpan Duration { get; private set; }
     public DateTimeOffset CreatedAt { get; private set; }
 
@@ -26,10 +28,14 @@ public class TicketClassification
         ClassificationConfidence confidence,
         string suggestedSolution,
         ClassificationSource source,
-        TimeSpan duration)
+        TimeSpan duration,
+        string model,
+        bool isItRelated)
     {
-        if (string.IsNullOrWhiteSpace(suggestedSolution))
-            throw new ArgumentException("SuggestedSolution darf nicht leer sein.", nameof(suggestedSolution));
+        if (suggestedSolution is null)
+            throw new ArgumentNullException(nameof(suggestedSolution));
+        if (string.IsNullOrWhiteSpace(model))
+            throw new ArgumentException("Model darf nicht leer sein.", nameof(model));
 
         Id = Guid.NewGuid();
         TicketId = ticketId;
@@ -37,6 +43,8 @@ public class TicketClassification
         Confidence = confidence;
         SuggestedSolution = suggestedSolution;
         Source = source;
+        Model = model;
+        IsItRelated = isItRelated;
         Duration = duration;
         CreatedAt = DateTimeOffset.UtcNow;
     }

@@ -1,16 +1,10 @@
 using System.Diagnostics;
 using TicketSystem.Application.Common.Interfaces;
+using TicketSystem.Domain.Classification.Enums;
 using TicketSystem.Domain.Tickets.Enums;
 
 namespace TicketSystem.Infrastructure.Ai.Clients;
 
-/// <summary>
-/// Platzhalter-Implementierung von IClassificationService: ordnet Tickets rein anhand von
-/// Stichwörtern einer Kategorie zu. Muss durch einen echten Aufruf der Anthropic Claude API
-/// oder OpenAI API ersetzt werden (siehe Projektvereinbarung 2.4 "Hilfsmittel"). Da
-/// IClassificationService in der Application-Schicht definiert ist, betrifft der Austausch
-/// nur diese Klasse und die DI-Registrierung in AddInfrastructure.
-/// </summary>
 public class KeywordBasedClassificationService : IClassificationService
 {
     private static readonly (TicketCategory Category, string[] Keywords, string Solution)[] Rules =
@@ -29,6 +23,7 @@ public class KeywordBasedClassificationService : IClassificationService
 
     public Task<ClassificationOutcome> ClassifyAsync(string title, string description, CancellationToken ct = default)
     {
+        ct.ThrowIfCancellationRequested();
         var stopwatch = Stopwatch.StartNew();
         var text = $"{title} {description}".ToLowerInvariant();
 
@@ -37,7 +32,14 @@ public class KeywordBasedClassificationService : IClassificationService
             if (rule.Keywords.Any(text.Contains))
             {
                 stopwatch.Stop();
-                return Task.FromResult(new ClassificationOutcome(rule.Category, 0.85, rule.Solution, stopwatch.Elapsed));
+                return Task.FromResult(new ClassificationOutcome(
+                    rule.Category,
+                    0.85,
+                    rule.Solution,
+                    stopwatch.Elapsed,
+                    ClassificationSource.Keyword,
+                    "keyword-rules-v1",
+                    true));
             }
         }
 
@@ -46,6 +48,9 @@ public class KeywordBasedClassificationService : IClassificationService
             TicketCategory.Other,
             0.3,
             "Keine automatische Lösung gefunden – bitte manuell durch den IT-Support prüfen.",
-            stopwatch.Elapsed));
+            stopwatch.Elapsed,
+            ClassificationSource.Keyword,
+            "keyword-rules-v1",
+            true));
     }
 }
