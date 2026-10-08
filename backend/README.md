@@ -47,6 +47,16 @@ Swagger UI: `http://localhost:<port>/swagger`
 | POST    | `/api/tickets/{id}/similar-solution` | Ähnliche gelöste Tickets suchen und Lösung vorschlagen |
 | POST    | `/api/tickets/{id}/accept-suggested-solution` | Vorgeschlagene Lösung als hilfreich bestätigen |
 | POST    | `/api/tickets/{id}/resolve-out-of-scope` | Ticket ohne IT-Bezug als gelöst markieren |
+| GET     | `/api/tickets/{id}/chat` | Gespeicherten Chat des eigenen Tickets abrufen |
+| POST    | `/api/tickets/{id}/chat` | Rückfrage zur KI über OpenRouter senden |
+| GET     | `/api/tickets/chat/unread` | Ungelesene KI-Chatantworten der eigenen Tickets abrufen |
+| POST    | `/api/tickets/{id}/chat/read` | Chatantworten des eigenen Tickets als gelesen markieren |
+
+Der Ticket-Chat speichert Nachrichten dauerhaft in derselben Datenbank wie die Tickets und lädt sie
+beim erneuten Öffnen wieder. Nur der Ticket-Ersteller kann den Chat verwenden, OpenRouter erneut
+starten, eine vorgeschlagene Lösung bestätigen oder ein Ticket ohne IT-Bezug abschliessen. Andere
+Teammitglieder können Tickets weiterhin ansehen, aber diese Aktionen nicht ausführen; das Backend
+erzwingt die Berechtigung auch dann, wenn ein API-Aufruf direkt gesendet wird.
 
 Der Standard-Provider lässt sich in `appsettings.json` über `Classification:Provider` auf
 `OpenRouter`, `Claude` oder `Keyword` setzen. Für einen direkten Vergleich kann derselbe Endpunkt

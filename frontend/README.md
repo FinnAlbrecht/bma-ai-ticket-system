@@ -38,6 +38,11 @@ sofort beim Zurückkehren zum Browser-Tab. Hinweise zu gefundenen Lösungen und 
 werden nur dem Ersteller des jeweiligen Tickets angezeigt. Konten und Tickets teilen dieselbe
 Backend-Datenbank, sodass Teammitglieder dieselbe Ticketliste verwenden.
 
+In den Details eines eigenen Tickets kannst du im gespeicherten KI-Chat Rückfragen stellen. Der
+Verlauf bleibt beim erneuten Öffnen erhalten; neue KI-Antworten werden laufend erkannt und als
+Benachrichtigung angezeigt. Chat, erneute OpenRouter-Anfragen und Ticket-Aktionen sind auf den
+Ersteller beschränkt. Andere Teammitglieder sehen Ticketdetails nur lesend.
+
 Für die automatische Klassifizierung muss der OpenRouter-API-Schlüssel im Backend gesetzt sein.
 Ohne gültigen Schlüssel wird das Ticket zwar erstellt, aber die Oberfläche meldet den Fehler bei der
 Klassifizierung; es erfolgt kein stiller Wechsel zu einem anderen Provider.

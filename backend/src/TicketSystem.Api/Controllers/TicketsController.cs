@@ -8,6 +8,7 @@ using TicketSystem.Application.Classification.Commands;
 using TicketSystem.Application.Classification.Queries;
 using TicketSystem.Application.Common.Exceptions;
 using TicketSystem.Application.Tickets.Commands;
+using TicketSystem.Application.Tickets.Chat;
 using TicketSystem.Application.Tickets.Dtos;
 using TicketSystem.Application.Tickets.Queries;
 using TicketSystem.Domain.Tickets.Exceptions;
@@ -28,6 +29,7 @@ public class TicketsController : ControllerBase
     private readonly FindSimilarSolutionCommandHandler _findSimilarSolutionHandler;
     private readonly AcceptSuggestedSolutionCommandHandler _acceptSuggestedSolutionHandler;
     private readonly ResolveOutOfScopeTicketCommandHandler _resolveOutOfScopeTicketHandler;
+    private readonly ITicketChatService _ticketChatService;
     private readonly ITicketRepository _ticketRepository;
     private readonly IConfiguration _configuration;
 
@@ -40,6 +42,7 @@ public class TicketsController : ControllerBase
         FindSimilarSolutionCommandHandler findSimilarSolutionHandler,
         AcceptSuggestedSolutionCommandHandler acceptSuggestedSolutionHandler,
         ResolveOutOfScopeTicketCommandHandler resolveOutOfScopeTicketHandler,
+        ITicketChatService ticketChatService,
         ITicketRepository ticketRepository,
         IConfiguration configuration)
     {
@@ -51,6 +54,7 @@ public class TicketsController : ControllerBase
         _findSimilarSolutionHandler = findSimilarSolutionHandler;
         _acceptSuggestedSolutionHandler = acceptSuggestedSolutionHandler;
         _resolveOutOfScopeTicketHandler = resolveOutOfScopeTicketHandler;
+        _ticketChatService = ticketChatService;
         _ticketRepository = ticketRepository;
         _configuration = configuration;
     }
@@ -114,6 +118,10 @@ public class TicketsController : ControllerBase
     [HttpPost("{id:guid}/classify")]
     public async Task<IActionResult> Classify(Guid id, [FromQuery] string? provider, CancellationToken ct)
     {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct);
+        if (ownershipError is not null)
+            return ownershipError;
+
         try
         {
             return Ok(await _classifyTicketHandler.HandleAsync(new ClassifyTicketCommand(id, provider), ct));
@@ -152,6 +160,10 @@ public class TicketsController : ControllerBase
     [HttpPost("{id:guid}/similar-solution")]
     public async Task<IActionResult> FindSimilarSolution(Guid id, CancellationToken ct)
     {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct);
+        if (ownershipError is not null)
+            return ownershipError;
+
         try
         {
             return Ok(await _findSimilarSolutionHandler.HandleAsync(new FindSimilarSolutionCommand(id), ct));
@@ -169,6 +181,10 @@ public class TicketsController : ControllerBase
     [HttpPost("{id:guid}/accept-suggested-solution")]
     public async Task<IActionResult> AcceptSuggestedSolution(Guid id, CancellationToken ct)
     {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct);
+        if (ownershipError is not null)
+            return ownershipError;
+
         try
         {
             return Ok(await _acceptSuggestedSolutionHandler.HandleAsync(new AcceptSuggestedSolutionCommand(id), ct));
@@ -188,8 +204,12 @@ public class TicketsController : ControllerBase
     }
 
     [HttpPost("{id:guid}/resolve-out-of-scope")]
-    public async Task<ActionResult<TicketDto>> ResolveOutOfScope(Guid id, CancellationToken ct)
+    public async Task<IActionResult> ResolveOutOfScope(Guid id, CancellationToken ct)
     {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct);
+        if (ownershipError is not null)
+            return ownershipError;
+
         try
         {
             return Ok(await _resolveOutOfScopeTicketHandler.HandleAsync(
@@ -207,5 +227,82 @@ public class TicketsController : ControllerBase
         {
             return BadRequest(ex.Message);
         }
+    }
+
+    [HttpGet("{id:guid}/chat")]
+    public async Task<IActionResult> GetChatHistory(Guid id, CancellationToken ct)
+    {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true);
+        if (ownershipError is not null)
+            return ownershipError;
+        var messages = await _ticketChatService.GetHistoryAsync(id, ct);
+        return Ok(messages);
+    }
+
+    [HttpPost("{id:guid}/chat")]
+    public async Task<IActionResult> SendChatMessage(
+        Guid id,
+        [FromBody] SendTicketChatMessageRequest request,
+        CancellationToken ct)
+    {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true);
+        if (ownershipError is not null)
+            return ownershipError;
+
+        try
+        {
+            return Ok(await _ticketChatService.SendMessageAsync(id, request.Message, ct));
+        }
+        catch (ClassificationUnavailableException)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "OpenRouter ist derzeit nicht verfügbar.");
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+        catch (TicketNotFoundException ex)
+        {
+            return NotFound(ex.Message);
+        }
+    }
+
+    [HttpGet("chat/unread")]
+    public async Task<IActionResult> GetUnreadChatMessages(CancellationToken ct)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Unauthorized();
+
+        return Ok(await _ticketChatService.GetUnreadMessagesAsync(userId, ct));
+    }
+
+    [HttpPost("{id:guid}/chat/read")]
+    public async Task<IActionResult> MarkChatMessagesRead(Guid id, CancellationToken ct)
+    {
+        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true);
+        if (ownershipError is not null)
+            return ownershipError;
+
+        await _ticketChatService.MarkMessagesReadAsync(id, ct);
+        return NoContent();
+    }
+
+    private async Task<IActionResult?> RequireTicketOwnerAsync(
+        Guid ticketId,
+        CancellationToken ct,
+        bool requireItRelated = false)
+    {
+        if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
+            return Unauthorized();
+
+        var ticket = await _ticketRepository.GetByIdAsync(ticketId, ct);
+        if (ticket is null)
+            return NotFound("Ticket nicht gefunden.");
+        if (ticket.CreatedByUserId != userId)
+            return Forbid();
+        if (requireItRelated && ticket.Category == TicketSystem.Domain.Tickets.Enums.TicketCategory.OutOfScope)
+            return Conflict("Der Chat ist für Tickets ohne IT-Bezug deaktiviert.");
+
+        return null;
     }
 }

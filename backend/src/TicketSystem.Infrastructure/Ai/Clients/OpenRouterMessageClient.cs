@@ -12,12 +12,21 @@ public sealed class OpenRouterMessageClient(
     IOptions<OpenRouterOptions> options) : IOpenRouterMessageClient
 {
     public async Task<string> CreateMessageAsync(string systemPrompt, string userPrompt, CancellationToken ct)
+        => await CreateChatCompletionAsync(
+            systemPrompt,
+            [new OpenRouterChatMessage("user", userPrompt)],
+            ct);
+
+    public async Task<string> CreateChatCompletionAsync(
+        string systemPrompt,
+        IReadOnlyList<OpenRouterChatMessage> messages,
+        CancellationToken ct)
     {
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                return await CreateMessageOnceAsync(systemPrompt, userPrompt, ct);
+                return await CreateMessageOnceAsync(systemPrompt, messages, ct);
             }
             catch (HttpRequestException ex) when (ShouldRetry(ex, attempt))
             {
@@ -26,7 +35,10 @@ public sealed class OpenRouterMessageClient(
         }
     }
 
-    private async Task<string> CreateMessageOnceAsync(string systemPrompt, string userPrompt, CancellationToken ct)
+    private async Task<string> CreateMessageOnceAsync(
+        string systemPrompt,
+        IReadOnlyList<OpenRouterChatMessage> messages,
+        CancellationToken ct)
     {
         var settings = options.Value;
         using var request = new HttpRequestMessage(HttpMethod.Post, settings.Endpoint);
@@ -36,11 +48,8 @@ public sealed class OpenRouterMessageClient(
             model = settings.Model,
             max_tokens = settings.MaxTokens,
             temperature = 0,
-            messages = new[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userPrompt }
-            }
+            messages = new[] { new OpenRouterChatMessage("system", systemPrompt) }
+                .Concat(messages)
         });
 
         using var response = await httpClient.SendAsync(request, ct);

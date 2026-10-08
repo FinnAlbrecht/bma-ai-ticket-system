@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 using Microsoft.EntityFrameworkCore;
 using TicketSystem.Application.Common.Interfaces;
+using TicketSystem.Application.Tickets.Chat;
 using TicketSystem.Infrastructure.Ai;
 using TicketSystem.Infrastructure.Ai.Clients;
 using TicketSystem.Domain.Classification.Repositories;
@@ -34,6 +35,7 @@ public static class InfrastructureServiceCollectionExtensions
         });
         services.AddScoped<ITicketRepository, SqliteTicketRepository>();
         services.AddScoped<ITicketClassificationRepository, SqliteTicketClassificationRepository>();
+        services.AddScoped<ITicketChatMessageRepository, TicketChatMessageRepository>();
         services.AddSingleton(serviceProvider =>
         {
             var options = serviceProvider.GetRequiredService<IOptions<AnthropicOptions>>().Value;
@@ -51,6 +53,7 @@ public static class InfrastructureServiceCollectionExtensions
         });
         services.AddScoped<ClaudeClassificationService>();
         services.AddScoped<OpenRouterClassificationService>();
+        services.AddScoped<ITicketChatService, TicketChatService>();
         services.AddScoped<KeywordBasedClassificationService>();
         services.AddScoped<IClassificationServiceResolver, ClassificationServiceResolver>();
         return services;

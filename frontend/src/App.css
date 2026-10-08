@@ -58,6 +58,23 @@ main { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }.page-heading { d
 .status-closed { color: #3b7771; background: #dcefeb; }
 .status-answerfound { color: #725d16; background: #f8edbd; }
 .ticket-indicator-loading { background: var(--teal); animation: ticket-spin .8s linear infinite; }
+.ticket-chat-panel { margin-top: 20px; }
+.ticket-chat-panel .panel-head { align-items: center; }
+.chat-owner-label { color: var(--muted); font: 10px 'DM Mono', monospace; }
+.ticket-chat-messages { display: grid; gap: 12px; max-height: 430px; overflow-y: auto; padding: 8px 30px 22px; overscroll-behavior: contain; }
+.chat-message { width: min(86%, 680px); padding: 12px 14px; border: 1px solid var(--line); background: #fff; }
+.chat-message-user { justify-self: end; border-color: #cbd9a7; background: #f0f5e4; }
+.chat-message > span { color: var(--teal); font: 10px 'DM Mono', monospace; }
+.chat-message p { margin: 7px 0; color: var(--ink); font-size: 13px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.chat-message time { display: block; color: var(--muted); font: 9px 'DM Mono', monospace; }
+.ticket-chat-form { display: grid; grid-template-columns: 1fr auto; gap: 10px 12px; align-items: end; padding: 0 30px 24px; }
+.ticket-chat-form label { grid-column: 1 / -1; color: var(--muted); font: 10px 'DM Mono', monospace; text-transform: uppercase; }
+.ticket-chat-form textarea { width: 100%; min-height: 48px; max-height: 180px; resize: vertical; padding: 12px; border: 1px solid var(--line); outline: 0; color: var(--ink); background: #fff; font-size: 13px; line-height: 1.5; }
+.ticket-chat-form textarea:focus { border-color: var(--teal); }
+.ticket-chat-form .primary-button { width: auto; min-width: 175px; min-height: 46px; }
+.ticket-chat-form .primary-button:disabled { cursor: not-allowed; opacity: .55; }
+.chat-error { margin: 0 30px 14px; }
+.chat-private-notice { margin: 0 30px 26px; padding: 14px; border: 1px solid var(--line); color: var(--muted); background: #f6f8f2; font-size: 12px; line-height: 1.6; }
 .notification-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 20px; background: rgba(17, 31, 32, .54); }
 .notification-dialog { width: min(100%, 470px); padding: 36px; border: 1px solid var(--line); background: var(--paper); box-shadow: 0 24px 80px rgba(15, 34, 34, .25); animation: notification-enter .18s ease-out; }
 .notification-icon { display: grid; place-items: center; width: 48px; height: 48px; margin-bottom: 22px; border-radius: 50%; color: var(--teal); background: #e8f0ce; font-size: 25px; }
@@ -338,6 +355,15 @@ main { width: min(1240px, calc(100% - 40px)); margin: 0 auto; }.page-heading { d
   .assist-title strong { line-height: 1.45; }
   .assist-tag { font-size: 8px; }
   .solution-category { align-items: start; flex-direction: column; gap: 8px; }
+  .ticket-chat-panel { margin-top: 14px; }
+  .ticket-chat-panel .panel-head { align-items: flex-start; gap: 8px; padding-inline: 15px; }
+  .chat-owner-label { max-width: 115px; text-align: right; line-height: 1.5; }
+  .ticket-chat-messages { max-height: 55vh; padding: 6px 14px 18px; }
+  .chat-message { width: min(94%, 680px); padding: 11px; }
+  .ticket-chat-form { grid-template-columns: 1fr; padding: 0 14px 16px; }
+  .ticket-chat-form label { grid-column: auto; }
+  .ticket-chat-form .primary-button { width: 100%; }
+  .chat-error, .chat-private-notice { margin-inline: 14px; }
   .out-of-scope-banner { padding: 14px; }
   .notification-backdrop, .delete-password-backdrop { padding: 12px; }
   .notification-dialog { max-height: calc(100vh - 24px); max-height: calc(100dvh - 24px); overflow-y: auto; padding: 24px 20px; }

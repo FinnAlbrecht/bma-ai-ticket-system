@@ -122,6 +122,45 @@ public class OpenRouterMessageClientTests
         Assert.Equal("ticket prompt", messages[1].GetProperty("content").GetString());
     }
 
+    [Fact]
+    public async Task CreateChatCompletionAsync_PreservesConversationRolesAndOrder()
+    {
+        string? capturedBody = null;
+        var handler = new StubHttpMessageHandler(async request =>
+        {
+            capturedBody = await request.Content!.ReadAsStringAsync();
+            return new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent(
+                    """{"choices":[{"message":{"content":"Prüfe bitte die WLAN-Einstellungen."}}]}""",
+                    Encoding.UTF8,
+                    "application/json")
+            };
+        });
+        using var httpClient = new HttpClient(handler);
+        var client = new OpenRouterMessageClient(
+            httpClient,
+            Options.Create(new OpenRouterOptions { ApiKey = "test-key" }));
+
+        var answer = await client.CreateChatCompletionAsync(
+            "Antworte auf Deutsch.",
+            [
+                new OpenRouterChatMessage("user", "Das WLAN ist ausgefallen."),
+                new OpenRouterChatMessage("assistant", "Seit wann ist es ausgefallen?"),
+                new OpenRouterChatMessage("user", "Seit heute Morgen.")
+            ],
+            CancellationToken.None);
+
+        Assert.Equal("Prüfe bitte die WLAN-Einstellungen.", answer);
+        using var body = JsonDocument.Parse(capturedBody!);
+        var messages = body.RootElement.GetProperty("messages");
+        Assert.Equal(4, messages.GetArrayLength());
+        Assert.Equal("system", messages[0].GetProperty("role").GetString());
+        Assert.Equal("user", messages[1].GetProperty("role").GetString());
+        Assert.Equal("assistant", messages[2].GetProperty("role").GetString());
+        Assert.Equal("user", messages[3].GetProperty("role").GetString());
+    }
+
     private sealed class StubHttpMessageHandler(
         Func<HttpRequestMessage, Task<HttpResponseMessage>> sendAsync) : HttpMessageHandler
     {
