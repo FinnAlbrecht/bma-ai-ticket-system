@@ -6,6 +6,7 @@ public sealed class TicketDbContext(DbContextOptions<TicketDbContext> options) :
 {
     public DbSet<TicketRecord> Tickets => Set<TicketRecord>();
     public DbSet<TicketClassificationRecord> Classifications => Set<TicketClassificationRecord>();
+    public DbSet<TicketChatMessageRecord> ChatMessages => Set<TicketChatMessageRecord>();
     public DbSet<UserRecord> Users => Set<UserRecord>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -49,6 +50,14 @@ public sealed class TicketDbContext(DbContextOptions<TicketDbContext> options) :
             entity.Property(classification => classification.CreatedAt)
                 .HasConversion(value => value.UtcDateTime.Ticks, value => new DateTimeOffset(value, TimeSpan.Zero));
             entity.HasIndex(classification => new { classification.TicketId, classification.CreatedAt });
+        });
+
+        modelBuilder.Entity<TicketChatMessageRecord>(entity =>
+        {
+            entity.HasKey(message => message.Id);
+            entity.Property(message => message.Role).HasMaxLength(20).IsRequired();
+            entity.Property(message => message.Content).HasMaxLength(8000).IsRequired();
+            entity.HasIndex(message => new { message.TicketId, message.CreatedAtUtcTicks });
         });
     }
 }

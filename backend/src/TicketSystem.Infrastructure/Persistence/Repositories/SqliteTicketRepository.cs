@@ -44,6 +44,9 @@ public sealed class SqliteTicketRepository(TicketDbContext dbContext) : ITicketR
 
     public async Task DeleteAllAsync(CancellationToken ct = default)
     {
+        var chatMessages = await dbContext.ChatMessages.ToListAsync(ct);
+        dbContext.ChatMessages.RemoveRange(chatMessages);
+
         var classifications = await dbContext.Classifications.ToListAsync(ct);
         dbContext.Classifications.RemoveRange(classifications);
 

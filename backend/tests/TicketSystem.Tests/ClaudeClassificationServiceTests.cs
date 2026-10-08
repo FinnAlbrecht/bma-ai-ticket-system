@@ -1,4 +1,5 @@
 using Anthropic;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Configuration;
@@ -11,6 +12,7 @@ using TicketSystem.Application.Classification.Commands;
 using TicketSystem.Application.Classification.Queries;
 using TicketSystem.Application.Common.Interfaces;
 using TicketSystem.Application.Tickets.Commands;
+using TicketSystem.Application.Tickets.Chat;
 using TicketSystem.Application.Tickets.Queries;
 using TicketSystem.Domain.Classification.Repositories;
 using TicketSystem.Domain.Tickets.Entities;
@@ -179,9 +181,10 @@ public class ClaudeClassificationServiceTests
     [Fact]
     public async Task Controller_Returns503WhenClassificationApiFails()
     {
+        var ownerId = Guid.NewGuid();
         var ticketRepository = new InMemoryTicketRepository();
         var classificationRepository = new InMemoryTicketClassificationRepository();
-        var ticket = new Ticket("Passwort", "Login schlägt fehl.");
+        var ticket = new Ticket("Passwort", "Login schlägt fehl.", ownerId, "Besitzer");
         await ticketRepository.AddAsync(ticket);
         var unavailableService = new ClaudeClassificationService(
             new FailingAnthropicMessageClient(),
@@ -200,14 +203,118 @@ public class ClaudeClassificationServiceTests
             new FindSimilarSolutionCommandHandler(ticketRepository),
             new AcceptSuggestedSolutionCommandHandler(ticketRepository),
             new ResolveOutOfScopeTicketCommandHandler(ticketRepository),
+            new StubTicketChatService(),
             ticketRepository,
-            new ConfigurationBuilder().Build());
+            new ConfigurationBuilder().Build())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.NameIdentifier, ownerId.ToString())],
+                        "test"))
+                }
+            }
+        };
 
         var response = await controller.Classify(ticket.Id, "claude", CancellationToken.None);
 
         var result = Assert.IsType<ObjectResult>(response);
         Assert.Equal(StatusCodes.Status503ServiceUnavailable, result.StatusCode);
         Assert.Equal(TicketStatus.InProgress, ticket.Status);
+    }
+
+    [Fact]
+    public async Task Controller_ForbidsClassificationAndChatForAnotherUsersTicket()
+    {
+        var ownerId = Guid.NewGuid();
+        var signedInUserId = Guid.NewGuid();
+        var ticketRepository = new InMemoryTicketRepository();
+        var ticket = new Ticket("WLAN", "Die Verbindung bricht ab.", ownerId, "Besitzer");
+        await ticketRepository.AddAsync(ticket);
+        var classificationRepository = new InMemoryTicketClassificationRepository();
+
+        var controller = new TicketsController(
+            new CreateTicketCommandHandler(ticketRepository),
+            new GetAllTicketsQueryHandler(ticketRepository),
+            new GetTicketByIdQueryHandler(ticketRepository),
+            new ClassifyTicketCommandHandler(
+                ticketRepository,
+                classificationRepository,
+                new FixedResolver(new KeywordBasedClassificationService())),
+            new GetTicketClassificationHistoryQueryHandler(ticketRepository, classificationRepository),
+            new FindSimilarSolutionCommandHandler(ticketRepository),
+            new AcceptSuggestedSolutionCommandHandler(ticketRepository),
+            new ResolveOutOfScopeTicketCommandHandler(ticketRepository),
+            new StubTicketChatService(),
+            ticketRepository,
+            new ConfigurationBuilder().Build())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.NameIdentifier, signedInUserId.ToString())],
+                        "test"))
+                }
+            }
+        };
+
+        var classifyResult = await controller.Classify(ticket.Id, "openrouter", CancellationToken.None);
+        var chatResult = await controller.GetChatHistory(ticket.Id, CancellationToken.None);
+
+        Assert.IsType<ForbidResult>(classifyResult);
+        Assert.IsType<ForbidResult>(chatResult);
+        Assert.Equal(TicketStatus.New, ticket.Status);
+    }
+
+    [Fact]
+    public async Task Controller_DisablesChatForTicketsWithoutItRelation()
+    {
+        var ownerId = Guid.NewGuid();
+        var ticketRepository = new InMemoryTicketRepository();
+        var ticket = new Ticket("Spaghetti", "Wie koche ich Spaghetti?", ownerId, "Besitzer");
+        ticket.ApplyClassification(TicketCategory.OutOfScope);
+        await ticketRepository.AddAsync(ticket);
+        var classificationRepository = new InMemoryTicketClassificationRepository();
+
+        var controller = new TicketsController(
+            new CreateTicketCommandHandler(ticketRepository),
+            new GetAllTicketsQueryHandler(ticketRepository),
+            new GetTicketByIdQueryHandler(ticketRepository),
+            new ClassifyTicketCommandHandler(
+                ticketRepository,
+                classificationRepository,
+                new FixedResolver(new KeywordBasedClassificationService())),
+            new GetTicketClassificationHistoryQueryHandler(ticketRepository, classificationRepository),
+            new FindSimilarSolutionCommandHandler(ticketRepository),
+            new AcceptSuggestedSolutionCommandHandler(ticketRepository),
+            new ResolveOutOfScopeTicketCommandHandler(ticketRepository),
+            new StubTicketChatService(),
+            ticketRepository,
+            new ConfigurationBuilder().Build())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.NameIdentifier, ownerId.ToString())],
+                        "test"))
+                }
+            }
+        };
+
+        var historyResult = await controller.GetChatHistory(ticket.Id, CancellationToken.None);
+        var sendResult = await controller.SendChatMessage(
+            ticket.Id,
+            new TicketSystem.Api.Contracts.SendTicketChatMessageRequest("Warum?"),
+            CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(historyResult);
+        Assert.IsType<ConflictObjectResult>(sendResult);
     }
 
     [Fact]
@@ -586,6 +693,21 @@ public class ClaudeClassificationServiceTests
             Assert.NotNull(persistedTicket);
             Assert.Equal(ownerId, persistedTicket.CreatedByUserId);
             Assert.Equal("Teammitglied", persistedTicket.CreatedByName);
+
+            var chatRepository = new TicketChatMessageRepository(dbContext);
+            await chatRepository.AddAsync(newTicket.Id, "user", "WLAN funktioniert noch nicht.");
+            var answer = await chatRepository.AddAsync(newTicket.Id, "assistant", "Starte den Router neu.");
+            var history = await chatRepository.GetByTicketIdAsync(newTicket.Id);
+            var unread = await chatRepository.GetUnreadByOwnerAsync(ownerId);
+            Assert.Equal(2, history.Count);
+            Assert.Equal("Starte den Router neu.", history[1].Content);
+            Assert.Contains(unread, message => message.MessageId == answer.Id);
+
+            await chatRepository.MarkTicketMessagesReadAsync(newTicket.Id);
+            Assert.Empty(await chatRepository.GetUnreadByOwnerAsync(ownerId));
+
+            await ticketRepository.DeleteAllAsync();
+            Assert.Empty(await chatRepository.GetByTicketIdAsync(newTicket.Id));
         }
         finally
         {
@@ -684,5 +806,29 @@ public class ClaudeClassificationServiceTests
             ct.ThrowIfCancellationRequested();
             return Task.FromResult(response);
         }
+
+        public Task<string> CreateChatCompletionAsync(
+            string systemPrompt,
+            IReadOnlyList<OpenRouterChatMessage> messages,
+            CancellationToken ct)
+        {
+            ct.ThrowIfCancellationRequested();
+            return Task.FromResult(response);
+        }
+    }
+
+    private sealed class StubTicketChatService : ITicketChatService
+    {
+        public Task<IReadOnlyList<TicketChatMessage>> GetHistoryAsync(Guid ticketId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<TicketChatMessage>>([]);
+
+        public Task<TicketChatExchange> SendMessageAsync(Guid ticketId, string message, CancellationToken ct = default)
+            => throw new NotSupportedException();
+
+        public Task<IReadOnlyList<TicketChatNotification>> GetUnreadMessagesAsync(Guid ownerId, CancellationToken ct = default)
+            => Task.FromResult<IReadOnlyList<TicketChatNotification>>([]);
+
+        public Task MarkMessagesReadAsync(Guid ticketId, CancellationToken ct = default)
+            => Task.CompletedTask;
     }
 }

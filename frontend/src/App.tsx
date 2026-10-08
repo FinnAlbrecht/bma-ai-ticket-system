@@ -10,14 +10,25 @@ import {
   getApiHealth,
   getCurrentUser,
   getClassificationHistory,
+  getTicketChatMessages,
+  getUnreadTicketChatMessages,
   getTickets,
   loginUser,
   logoutUser,
   registerUser,
   resolveOutOfScopeTicket,
+  sendTicketChatMessage,
+  markTicketChatMessagesRead,
 } from './api'
 import { ApiError } from './api'
-import type { AuthUser, ClassificationResult, DashboardMetrics, Ticket, TicketClassification } from './api'
+import type {
+  AuthUser,
+  ClassificationResult,
+  DashboardMetrics,
+  Ticket,
+  TicketChatMessage,
+  TicketClassification,
+} from './api'
 import './App.css'
 
 type ApiStatus = 'checking' | 'connected' | 'disconnected'
@@ -27,7 +38,7 @@ type TicketNotification = {
   id: string
   ticketId: string
   title: string
-  kind: 'answer-found' | 'resolved' | 'out-of-scope' | 'classification-failed'
+  kind: 'answer-found' | 'resolved' | 'out-of-scope' | 'classification-failed' | 'chat-reply'
   message?: string
 }
 
@@ -107,14 +118,40 @@ function App() {
   const [history, setHistory] = useState<TicketClassification[]>([])
   const [historyTicketId, setHistoryTicketId] = useState<string | null>(null)
   const [notifications, setNotifications] = useState<TicketNotification[]>([])
+  const [chatMessages, setChatMessages] = useState<TicketChatMessage[]>([])
+  const [chatTicketId, setChatTicketId] = useState<string | null>(null)
+  const [chatLoading, setChatLoading] = useState(false)
+  const [sendingChatMessage, setSendingChatMessage] = useState(false)
+  const [chatError, setChatError] = useState('')
   const knownTicketStatuses = useRef<Map<string, string> | null>(null)
+  const knownChatMessageIds = useRef<Set<string>>(new Set())
   const workspaceGeneration = useRef(0)
+  const selectedTicket = tickets.find((ticket) => ticket.id === routeTicketId)
+  const canManageSelectedTicket = selectedTicket?.createdByUserId === user?.id
+  const canChatSelectedTicket = canManageSelectedTicket && selectedTicket?.category !== 'OutOfScope'
 
   const enqueueNotification = useCallback((notification: TicketNotification) => {
     setNotifications((current) => current.some((item) => item.id === notification.id)
       ? current
       : [...current, notification])
   }, [])
+
+  const refreshUnreadChatNotifications = useCallback(async () => {
+    try {
+      const unreadMessages = await getUnreadTicketChatMessages()
+      unreadMessages.forEach((message) => enqueueNotification({
+        id: `chat-reply:${message.messageId}`,
+        ticketId: message.ticketId,
+        title: message.ticketTitle,
+        kind: 'chat-reply',
+        message: message.content,
+      }))
+    } catch (error) {
+      if (!(error instanceof ApiError && error.status === 401)) {
+        setNotice(error instanceof Error ? error.message : 'Neue Chat-Nachrichten konnten nicht geladen werden.')
+      }
+    }
+  }, [enqueueNotification])
 
   const loadTickets = useCallback(async () => {
     const generation = workspaceGeneration.current
@@ -239,6 +276,8 @@ function App() {
         if (active) setNotice(error instanceof Error ? error.message : 'Dashboard-Kennzahlen konnten nicht geladen werden.')
       }
 
+      if (active) await refreshUnreadChatNotifications()
+
       try {
         await getApiHealth()
         if (active) setApiStatus('connected')
@@ -249,7 +288,7 @@ function App() {
 
     void initializeWorkspace()
     return () => { active = false }
-  }, [user])
+  }, [refreshUnreadChatNotifications, user])
 
   useEffect(() => {
     const onPopState = () => {
@@ -271,6 +310,7 @@ function App() {
       refreshInProgress = true
       try {
         await loadTickets()
+        await refreshUnreadChatNotifications()
       } finally {
         refreshInProgress = false
       }
@@ -288,9 +328,69 @@ function App() {
       window.removeEventListener('focus', refreshVisibleTickets)
       document.removeEventListener('visibilitychange', refreshOnVisibilityChange)
     }
-  }, [loadTickets, user])
+  }, [loadTickets, refreshUnreadChatNotifications, user])
 
-  const selectedTicket = tickets.find((ticket) => ticket.id === routeTicketId)
+  useEffect(() => {
+    if (!routeTicketId || !user || !canChatSelectedTicket) {
+      knownChatMessageIds.current.clear()
+      return
+    }
+
+    let active = true
+    let refreshInProgress = false
+    let initialized = false
+    knownChatMessageIds.current = new Set()
+
+    const refreshChat = async () => {
+      if (!active || refreshInProgress || document.visibilityState === 'hidden') return
+      refreshInProgress = true
+      try {
+        const messages = await getTicketChatMessages(routeTicketId)
+        if (!active) return
+
+        messages.forEach((message) => {
+          const isNew = !knownChatMessageIds.current.has(message.id)
+          if (message.role === 'assistant' && isNew && (initialized || !message.isRead)) {
+            enqueueNotification({
+              id: `chat-reply:${message.id}`,
+              ticketId: routeTicketId,
+              title: selectedTicket?.title ?? 'Dein Ticket',
+              kind: 'chat-reply',
+              message: message.content,
+            })
+          }
+          knownChatMessageIds.current.add(message.id)
+        })
+        initialized = true
+        setChatMessages(messages)
+        setChatTicketId(routeTicketId)
+        void markTicketChatMessagesRead(routeTicketId).catch((error: unknown) => {
+          setChatError(error instanceof Error ? error.message : 'Die Nachricht konnte nicht als gelesen markiert werden.')
+        })
+      } catch (error) {
+        if (active) {
+          setChatTicketId(routeTicketId)
+          setChatError(error instanceof Error ? error.message : 'Der Ticket-Chat konnte nicht geladen werden.')
+        }
+      } finally {
+        if (active) setChatLoading(false)
+        refreshInProgress = false
+      }
+    }
+
+    void refreshChat()
+    const interval = window.setInterval(() => { void refreshChat() }, 2000)
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshChat()
+    }
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
+  }, [canChatSelectedTicket, enqueueNotification, routeTicketId, selectedTicket?.title, user])
+
   const selectedHistory = historyTicketId === routeTicketId ? history : []
   const historyLoading = Boolean(routeTicketId && historyTicketId !== routeTicketId)
   const visibleTickets = tickets.filter((ticket) => {
@@ -565,6 +665,58 @@ function App() {
     }
   }
 
+  const handleSendChatMessage = async (ticketId: string, message: string): Promise<boolean> => {
+    if (selectedTicket?.id !== ticketId || selectedTicket.createdByUserId !== user?.id) {
+      setChatError('Du kannst nur im Chat deines eigenen Tickets schreiben.')
+      return false
+    }
+    if (selectedTicket.category === 'OutOfScope') {
+      setChatError('Bei Tickets ohne IT-Bezug ist der Chat deaktiviert.')
+      return false
+    }
+
+    setSendingChatMessage(true)
+    setChatError('')
+    try {
+      const exchange = await sendTicketChatMessage(ticketId, message)
+      setChatMessages((current) => {
+        const next = [...current]
+        for (const newMessage of [exchange.userMessage, exchange.assistantMessage]) {
+          if (!next.some((item) => item.id === newMessage.id)) next.push(newMessage)
+          knownChatMessageIds.current.add(newMessage.id)
+        }
+        return next
+      })
+      setChatTicketId(ticketId)
+      enqueueNotification({
+        id: `chat-reply:${exchange.assistantMessage.id}`,
+        ticketId,
+        title: selectedTicket.title,
+        kind: 'chat-reply',
+        message: exchange.assistantMessage.content,
+      })
+      void markTicketChatMessagesRead(ticketId).catch((error: unknown) => {
+        setChatError(error instanceof Error ? error.message : 'Die Nachricht konnte nicht als gelesen markiert werden.')
+      })
+      return true
+    } catch (error) {
+      setChatError(error instanceof Error ? error.message : 'Deine Nachricht konnte nicht gesendet werden.')
+      return false
+    } finally {
+      setSendingChatMessage(false)
+    }
+  }
+
+  const dismissActiveNotification = () => {
+    const notification = notifications[0]
+    if (notification?.kind === 'chat-reply') {
+      void markTicketChatMessagesRead(notification.ticketId).catch((error: unknown) => {
+        setNotice(error instanceof Error ? error.message : 'Die Chat-Nachricht konnte nicht als gelesen markiert werden.')
+      })
+    }
+    setNotifications((current) => current.slice(1))
+  }
+
   const submitTicket = async (event: FormEvent) => {
     event.preventDefault()
     const cleanTitle = title.trim()
@@ -653,10 +805,17 @@ function App() {
             historyLoading={historyLoading}
             searchingSimilarSolution={similarityCheckingIds.has(selectedTicket.id)}
             classifying={classifyingIds.has(selectedTicket.id)}
+            canManageTicket={canManageSelectedTicket}
+            canChatTicket={canChatSelectedTicket}
+            chatMessages={chatTicketId === selectedTicket.id ? chatMessages : []}
+            chatLoading={chatLoading || chatTicketId !== selectedTicket.id}
+            sendingChatMessage={sendingChatMessage}
+            chatError={chatTicketId === selectedTicket.id ? chatError : ''}
             onBack={goToQueue}
             onRetry={() => void runClassification(selectedTicket.id)}
             onAcceptSolution={() => void acceptPreviousSolution(selectedTicket.id)}
             onResolveOutOfScope={() => void handleResolveOutOfScope(selectedTicket.id)}
+            onSendChatMessage={(message) => handleSendChatMessage(selectedTicket.id, message)}
           />
         ) : routeTicketId ? (
           <section className="ticket-detail-page">
@@ -760,34 +919,46 @@ function App() {
         <div className="notification-backdrop">
           <section className="notification-dialog" role="dialog" aria-modal="true" aria-labelledby="notification-title">
             <span className="notification-icon">
-              {activeNotification.kind === 'answer-found' ? '✦' : activeNotification.kind === 'resolved' ? '✓' : '!'}
+              {activeNotification.kind === 'answer-found'
+                ? '✦'
+                : activeNotification.kind === 'resolved'
+                  ? '✓'
+                  : activeNotification.kind === 'chat-reply'
+                    ? '✉'
+                    : '!'}
             </span>
             <p className="eyebrow">
-              {activeNotification.kind === 'answer-found'
-                ? 'Antwort gefunden'
-                : activeNotification.kind === 'resolved'
-                  ? 'Ticket gelöst'
-                  : activeNotification.kind === 'out-of-scope'
-                    ? 'Kein IT-Bezug'
-                    : 'Klassifizierung fehlgeschlagen'}
+              {activeNotification.kind === 'chat-reply'
+                ? 'Neue Chat-Antwort'
+                : activeNotification.kind === 'answer-found'
+                  ? 'Antwort gefunden'
+                  : activeNotification.kind === 'resolved'
+                    ? 'Ticket gelöst'
+                    : activeNotification.kind === 'out-of-scope'
+                      ? 'Kein IT-Bezug'
+                      : 'Klassifizierung fehlgeschlagen'}
             </p>
             <h2 id="notification-title">
-              {activeNotification.kind === 'answer-found'
-                ? 'Eine passende Lösung ist da.'
-                : activeNotification.kind === 'resolved'
-                  ? 'Dein Ticket wurde gelöst.'
-                  : activeNotification.kind === 'out-of-scope'
-                    ? 'Das Ticket betrifft kein IT-Thema.'
-                    : 'Das Ticket konnte nicht klassifiziert werden.'}
+              {activeNotification.kind === 'chat-reply'
+                ? 'Die KI hat dir geantwortet.'
+                : activeNotification.kind === 'answer-found'
+                  ? 'Eine passende Lösung ist da.'
+                  : activeNotification.kind === 'resolved'
+                    ? 'Dein Ticket wurde gelöst.'
+                    : activeNotification.kind === 'out-of-scope'
+                      ? 'Das Ticket betrifft kein IT-Thema.'
+                      : 'Das Ticket konnte nicht klassifiziert werden.'}
             </h2>
             <p className="notification-copy">
-              {activeNotification.kind === 'answer-found'
-                ? `Für „${activeNotification.title}“ wurde eine bewährte Lösung aus einem früheren Ticket gefunden. Du kannst sie im Ticket prüfen und bestätigen oder OpenRouter erneut fragen.`
-                : activeNotification.kind === 'resolved'
-                  ? `„${activeNotification.title}“ wurde erfolgreich abgeschlossen.`
-                  : activeNotification.kind === 'out-of-scope'
-                    ? `„${activeNotification.title}“ wurde als „Kein IT-Bezug“ eingeordnet. Du kannst das Ticket als gelöst markieren oder die Details ansehen.`
-                    : `„${activeNotification.title}“ ist noch offen. ${activeNotification.message ?? 'Die KI konnte keine Klassifizierung erstellen.'}`}
+              {activeNotification.kind === 'chat-reply'
+                ? `Eine neue Nachricht für „${activeNotification.title}“ ist eingetroffen.${activeNotification.message ? ` ${activeNotification.message.slice(0, 240)}${activeNotification.message.length > 240 ? '…' : ''}` : ''}`
+                : activeNotification.kind === 'answer-found'
+                  ? `Für „${activeNotification.title}“ wurde eine bewährte Lösung aus einem früheren Ticket gefunden. Du kannst sie im Ticket prüfen und bestätigen oder OpenRouter erneut fragen.`
+                  : activeNotification.kind === 'resolved'
+                    ? `„${activeNotification.title}“ wurde erfolgreich abgeschlossen.`
+                    : activeNotification.kind === 'out-of-scope'
+                      ? `„${activeNotification.title}“ wurde als „Kein IT-Bezug“ eingeordnet. Du kannst das Ticket als gelöst markieren oder die Details ansehen.`
+                      : `„${activeNotification.title}“ ist noch offen. ${activeNotification.message ?? 'Die KI konnte keine Klassifizierung erstellen.'}`}
             </p>
             <div className="notification-actions">
               {activeNotification.kind === 'out-of-scope' ? (
@@ -836,7 +1007,7 @@ function App() {
                   Ticket ansehen
                 </button>
               )}
-              <button className="secondary-button" onClick={() => setNotifications((current) => current.slice(1))}>
+              <button className="secondary-button" onClick={dismissActiveNotification}>
                 Später schließen
               </button>
             </div>
@@ -981,10 +1152,17 @@ type TicketDetailPageProps = {
   historyLoading: boolean
   searchingSimilarSolution: boolean
   classifying: boolean
+  canManageTicket: boolean
+  canChatTicket: boolean
+  chatMessages: TicketChatMessage[]
+  chatLoading: boolean
+  sendingChatMessage: boolean
+  chatError: string
   onBack: () => void
   onRetry: () => void
   onAcceptSolution: () => void
   onResolveOutOfScope: () => void
+  onSendChatMessage: (message: string) => Promise<boolean>
 }
 
 function TicketDetailPage({
@@ -993,12 +1171,27 @@ function TicketDetailPage({
   historyLoading,
   searchingSimilarSolution,
   classifying,
+  canManageTicket,
+  canChatTicket,
+  chatMessages,
+  chatLoading,
+  sendingChatMessage,
+  chatError,
   onBack,
   onRetry,
   onAcceptSolution,
   onResolveOutOfScope,
+  onSendChatMessage,
 }: TicketDetailPageProps) {
   const latest = history[0]
+  const [chatDraft, setChatDraft] = useState('')
+
+  const submitChatMessage = async (event: FormEvent) => {
+    event.preventDefault()
+    const message = chatDraft.trim()
+    if (!message || sendingChatMessage) return
+    if (await onSendChatMessage(message)) setChatDraft('')
+  }
 
   return (
     <section className="ticket-detail-page">
@@ -1013,7 +1206,7 @@ function TicketDetailPage({
           {ticket.category === 'OutOfScope' && <span className="ticket-flag">{getOutOfScopeLabel(ticket)}</span>}
         </span>
       </div>
-      {ticket.category === 'OutOfScope' && ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
+      {canManageTicket && ticket.category === 'OutOfScope' && ticket.status !== 'Resolved' && ticket.status !== 'Closed' && (
         <div className="out-of-scope-banner">
           <div><strong>Kein IT-Bezug</strong><span>Wenn das Anliegen damit erledigt ist, kannst du das Ticket als gelöst markieren.</span></div>
           <button className="primary-button" onClick={onResolveOutOfScope}>Als gelöst markieren <span>✓</span></button>
@@ -1061,7 +1254,7 @@ function TicketDetailPage({
                 </span>
                 <p>{ticket.suggestedResolution}</p>
               </div>
-              {ticket.status !== 'Resolved' && (
+              {canManageTicket && ticket.status !== 'Resolved' && (
                 <div className="reuse-actions">
                   <button className="primary-button" onClick={onAcceptSolution}>Hat geholfen – Ticket lösen <span>✓</span></button>
                   <button className="secondary-button" onClick={onRetry} disabled={classifying}>Hat nicht geholfen – OpenRouter erneut fragen <span>↻</span></button>
@@ -1078,12 +1271,62 @@ function TicketDetailPage({
           ) : (
             <div className="solution-pending">
               <div><strong>Noch kein Ergebnis vorhanden.</strong><p>Es wurde keine passende frühere Lösung gefunden. OpenRouter kann das Ticket klassifizieren.</p></div>
-              <button className="primary-button" onClick={onRetry} disabled={classifying}>OpenRouter starten <span>→</span></button>
+              {canManageTicket && (
+                <button className="primary-button" onClick={onRetry} disabled={classifying}>OpenRouter starten <span>→</span></button>
+              )}
             </div>
           )}
           {history.length > 1 && <p className="history-note">{history.length} Klassifizierungen gespeichert</p>}
         </article>
       </div>
+      {ticket.category !== 'OutOfScope' && latest?.isItRelated !== false && <section className="panel ticket-chat-panel" aria-label="Chat zum Ticket">
+        <div className="panel-head">
+          <div><p className="eyebrow">Rückfragen</p><h2>Mit der KI schreiben</h2></div>
+          <span className="chat-owner-label">{canChatTicket ? 'Privater Ticket-Chat' : 'Nur für den Ersteller'}</span>
+        </div>
+        {canChatTicket ? (
+          <>
+            <div className="ticket-chat-messages" aria-live="polite" aria-relevant="additions text">
+              {chatLoading && chatMessages.length === 0 && <p className="empty-state">Chat wird geladen ...</p>}
+              {!chatLoading && chatMessages.length === 0 && (
+                <p className="empty-state">Stelle eine Rückfrage zur KI-Antwort oder beschreibe, was du bereits ausprobiert hast.</p>
+              )}
+              {chatMessages.map((message) => (
+                <article key={message.id} className={`chat-message chat-message-${message.role}`}>
+                  <span>{message.role === 'assistant' ? 'TicketDesk KI' : 'Du'}</span>
+                  <p>{message.content}</p>
+                  <time dateTime={message.createdAt}>{formatDate(message.createdAt)}</time>
+                </article>
+              ))}
+            </div>
+            {chatError && <p className="auth-error chat-error" role="alert">{chatError}</p>}
+            <form className="ticket-chat-form" onSubmit={(event) => void submitChatMessage(event)}>
+              <label htmlFor="ticket-chat-message">Deine Nachricht</label>
+              <textarea
+                id="ticket-chat-message"
+                value={chatDraft}
+                onChange={(event) => setChatDraft(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' && !event.shiftKey && !sendingChatMessage) {
+                    event.preventDefault()
+                    event.currentTarget.form?.requestSubmit()
+                  }
+                }}
+                placeholder="Schreibe der KI, was noch unklar ist ..."
+                maxLength={4000}
+                rows={3}
+                disabled={sendingChatMessage}
+                required
+              />
+              <button className="primary-button" type="submit" disabled={sendingChatMessage || !chatDraft.trim()}>
+                {sendingChatMessage ? 'KI antwortet ...' : 'Nachricht senden'} <span>→</span>
+              </button>
+            </form>
+          </>
+        ) : (
+          <p className="chat-private-notice">Chatverlauf und Ticket-Aktionen sind nur für den Ersteller dieses Tickets zugänglich.</p>
+        )}
+      </section>}
     </section>
   )
 }

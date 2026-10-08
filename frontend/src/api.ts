@@ -65,6 +65,28 @@ export type ClassificationResult = {
 
 export type TicketClassification = Omit<ClassificationResult, 'message'>
 
+export type TicketChatMessage = {
+  id: string
+  ticketId: string
+  role: 'user' | 'assistant'
+  content: string
+  createdAt: string
+  isRead: boolean
+}
+
+export type TicketChatNotification = {
+  messageId: string
+  ticketId: string
+  ticketTitle: string
+  content: string
+  createdAt: string
+}
+
+export type TicketChatExchange = {
+  userMessage: TicketChatMessage
+  assistantMessage: TicketChatMessage
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let response: Response
 
@@ -187,4 +209,24 @@ export function classifyTicket(ticketId: string) {
 
 export function getClassificationHistory(ticketId: string) {
   return request<TicketClassification[]>(`/api/tickets/${ticketId}/classifications`)
+}
+
+export function getTicketChatMessages(ticketId: string) {
+  return request<TicketChatMessage[]>(`/api/tickets/${ticketId}/chat`)
+}
+
+export function sendTicketChatMessage(ticketId: string, message: string) {
+  return request<TicketChatExchange>(`/api/tickets/${ticketId}/chat`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message }),
+  })
+}
+
+export function getUnreadTicketChatMessages() {
+  return request<TicketChatNotification[]>('/api/tickets/chat/unread')
+}
+
+export function markTicketChatMessagesRead(ticketId: string) {
+  return request<void>(`/api/tickets/${ticketId}/chat/read`, { method: 'POST' })
 }

@@ -7,6 +7,7 @@ public static class TicketDatabaseInitializer
     public static async Task InitializeAsync(TicketDbContext database, CancellationToken ct = default)
     {
         await database.Database.EnsureCreatedAsync(ct);
+        await EnsureChatMessagesTableAsync(database, ct);
         if (!database.Database.IsSqlite())
             return;
 
@@ -30,6 +31,37 @@ public static class TicketDatabaseInitializer
         await database.Database.ExecuteSqlRawAsync(
             """CREATE INDEX IF NOT EXISTS "IX_Tickets_CreatedByUserId" ON "Tickets" ("CreatedByUserId");""",
             ct);
+    }
+
+    private static async Task EnsureChatMessagesTableAsync(TicketDbContext database, CancellationToken ct)
+    {
+        var sql = database.Database.IsSqlite()
+            ? """
+              CREATE TABLE IF NOT EXISTS "ChatMessages" (
+                  "Id" TEXT NOT NULL CONSTRAINT "PK_ChatMessages" PRIMARY KEY,
+                  "TicketId" TEXT NOT NULL,
+                  "Role" TEXT NOT NULL,
+                  "Content" TEXT NOT NULL,
+                  "CreatedAtUtcTicks" INTEGER NOT NULL,
+                  "IsRead" INTEGER NOT NULL
+              );
+              CREATE INDEX IF NOT EXISTS "IX_ChatMessages_TicketId_CreatedAtUtcTicks"
+                  ON "ChatMessages" ("TicketId", "CreatedAtUtcTicks");
+              """
+            : """
+              CREATE TABLE IF NOT EXISTS "ChatMessages" (
+                  "Id" uuid NOT NULL CONSTRAINT "PK_ChatMessages" PRIMARY KEY,
+                  "TicketId" uuid NOT NULL,
+                  "Role" character varying(20) NOT NULL,
+                  "Content" character varying(8000) NOT NULL,
+                  "CreatedAtUtcTicks" bigint NOT NULL,
+                  "IsRead" boolean NOT NULL
+              );
+              CREATE INDEX IF NOT EXISTS "IX_ChatMessages_TicketId_CreatedAtUtcTicks"
+                  ON "ChatMessages" ("TicketId", "CreatedAtUtcTicks");
+              """;
+
+        await database.Database.ExecuteSqlRawAsync(sql, ct);
     }
 
     private static async Task EnsureTicketColumnAsync(
