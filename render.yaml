@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: bma-ai-ticket-system
+    name: bma-ticketSystem
     runtime: docker
     plan: free
     region: frankfurt
