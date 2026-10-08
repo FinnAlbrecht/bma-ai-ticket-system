@@ -65,6 +65,12 @@ OpenRouter-Modell und -Timeout lassen sich unter `OpenRouter:Model` und
 `OpenRouter:TimeoutSeconds` konfigurieren. API-Aufrufe können Kosten verursachen; setze beim
 jeweiligen Provider ein Ausgabenlimit.
 
+Das endgültige Löschen aller Tickets verlangt zusätzlich ein serverseitiges Löschpasswort. Lokal
+konfigurierst du es mit `dotnet user-secrets set "DeleteAll:Password" "<eigenes-langes-passwort>" --project src/TicketSystem.Api`;
+auf Render setzt du `DeleteAll__Password` unter **Environment**. Ein fehlendes Passwort blockiert
+die Löschanfrage. Verwende ein langes, einzigartiges Passwort und lege es weder im Quellcode noch
+im Chat ab.
+
 ## Teamkonten
 
 Teammitglieder registrieren sich in der Oberfläche mit Anzeigename, E-Mail-Adresse und einem

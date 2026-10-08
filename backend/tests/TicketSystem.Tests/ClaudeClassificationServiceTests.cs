@@ -200,7 +200,8 @@ public class ClaudeClassificationServiceTests
             new FindSimilarSolutionCommandHandler(ticketRepository),
             new AcceptSuggestedSolutionCommandHandler(ticketRepository),
             new ResolveOutOfScopeTicketCommandHandler(ticketRepository),
-            ticketRepository);
+            ticketRepository,
+            new ConfigurationBuilder().Build());
 
         var response = await controller.Classify(ticket.Id, "claude", CancellationToken.None);
 

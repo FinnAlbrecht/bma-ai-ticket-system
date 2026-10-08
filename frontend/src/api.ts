@@ -149,8 +149,12 @@ export function getTickets() {
   return request<Ticket[]>('/api/tickets')
 }
 
-export function deleteAllTickets() {
-  return request<void>('/api/tickets', { method: 'DELETE' })
+export function deleteAllTickets(password: string) {
+  return request<void>('/api/tickets', {
+    method: 'DELETE',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ password }),
+  })
 }
 
 export function getDashboardMetrics() {

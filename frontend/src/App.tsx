@@ -93,11 +93,14 @@ function App() {
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
   const [filter, setFilter] = useState<TicketFilter>('Alle')
-  const [scope, setScope] = useState<TicketScope>('Alle')
+  const [scope, setScope] = useState<TicketScope>('Deine')
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [deletingAllTickets, setDeletingAllTickets] = useState(false)
+  const [deletePasswordOpen, setDeletePasswordOpen] = useState(false)
+  const [deletePassword, setDeletePassword] = useState('')
+  const [deletePasswordError, setDeletePasswordError] = useState('')
   const [classifyingIds, setClassifyingIds] = useState<Set<string>>(() => new Set())
   const [similarityCheckingIds, setSimilarityCheckingIds] = useState<Set<string>>(() => new Set())
   const [notice, setNotice] = useState('')
@@ -122,14 +125,18 @@ function App() {
       if (previousStatuses) {
         loadedTickets.forEach((ticket) => {
           const previousStatus = previousStatuses.get(ticket.id)
-          if (ticket.status === 'AnswerFound' && previousStatus !== 'AnswerFound') {
+          if (ticket.createdByUserId === user?.id
+            && ticket.status === 'AnswerFound'
+            && previousStatus !== 'AnswerFound') {
             enqueueNotification({
               id: `answer-found:${ticket.id}`,
               ticketId: ticket.id,
               title: ticket.title,
               kind: 'answer-found',
             })
-          } else if (ticket.status === 'Resolved' && previousStatus !== 'Resolved') {
+          } else if (ticket.createdByUserId === user?.id
+            && ticket.status === 'Resolved'
+            && previousStatus !== 'Resolved') {
             enqueueNotification({
               id: `resolved:${ticket.id}`,
               ticketId: ticket.id,
@@ -157,7 +164,7 @@ function App() {
     } finally {
       setLoading(false)
     }
-  }, [enqueueNotification])
+  }, [enqueueNotification, user?.id])
 
   useEffect(() => {
     let active = true
@@ -207,14 +214,6 @@ function App() {
           knownTicketStatuses.current = new Map(loadedTickets.map((ticket) => [ticket.id, ticket.status]))
           setTickets(loadedTickets)
           setApiStatus('connected')
-          loadedTickets
-            .filter((ticket) => ticket.status === 'AnswerFound')
-            .forEach((ticket) => enqueueNotification({
-              id: `answer-found:${ticket.id}`,
-              ticketId: ticket.id,
-              title: ticket.title,
-              kind: 'answer-found',
-            }))
         }
       } catch (error) {
         if (active) {
@@ -250,7 +249,7 @@ function App() {
 
     void initializeWorkspace()
     return () => { active = false }
-  }, [user, enqueueNotification])
+  }, [user])
 
   useEffect(() => {
     const onPopState = () => {
@@ -263,8 +262,32 @@ function App() {
 
   useEffect(() => {
     if (!user) return
-    const interval = window.setInterval(() => { void loadTickets() }, 5000)
-    return () => window.clearInterval(interval)
+    let active = true
+    let refreshInProgress = false
+
+    const refreshVisibleTickets = async () => {
+      if (!active || document.visibilityState === 'hidden' || refreshInProgress) return
+
+      refreshInProgress = true
+      try {
+        await loadTickets()
+      } finally {
+        refreshInProgress = false
+      }
+    }
+    const refreshOnVisibilityChange = () => {
+      if (document.visibilityState === 'visible') void refreshVisibleTickets()
+    }
+
+    const interval = window.setInterval(() => { void refreshVisibleTickets() }, 2000)
+    window.addEventListener('focus', refreshVisibleTickets)
+    document.addEventListener('visibilitychange', refreshOnVisibilityChange)
+    return () => {
+      active = false
+      window.clearInterval(interval)
+      window.removeEventListener('focus', refreshVisibleTickets)
+      document.removeEventListener('visibilitychange', refreshOnVisibilityChange)
+    }
   }, [loadTickets, user])
 
   const selectedTicket = tickets.find((ticket) => ticket.id === routeTicketId)
@@ -304,7 +327,8 @@ function App() {
     }
   }
 
-  const handleDeleteAllTickets = async () => {
+  const handleDeleteAllTickets = async (event: FormEvent) => {
+    event.preventDefault()
     const ticketCount = tickets.length
     if (ticketCount === 0 || saving || deletingAllTickets) return
 
@@ -314,9 +338,9 @@ function App() {
     if (!confirmation) return
 
     setDeletingAllTickets(true)
-    setNotice('')
+    setDeletePasswordError('')
     try {
-      await deleteAllTickets()
+      await deleteAllTickets(deletePassword)
       workspaceGeneration.current += 1
       setTickets([])
       setMetrics(null)
@@ -332,12 +356,27 @@ function App() {
         setDashboardPage(false)
       }
       setNotice(`${ticketCount} ${ticketCount === 1 ? 'Ticket wurde' : 'Tickets wurden'} gelöscht.`)
+      setDeletePassword('')
+      setDeletePasswordOpen(false)
       await refreshMetrics()
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'Die Tickets konnten nicht gelöscht werden.')
+      setDeletePasswordError(error instanceof Error ? error.message : 'Die Tickets konnten nicht gelöscht werden.')
     } finally {
       setDeletingAllTickets(false)
     }
+  }
+
+  const openDeletePasswordDialog = () => {
+    setDeletePassword('')
+    setDeletePasswordError('')
+    setDeletePasswordOpen(true)
+  }
+
+  const closeDeletePasswordDialog = () => {
+    if (deletingAllTickets) return
+    setDeletePassword('')
+    setDeletePasswordError('')
+    setDeletePasswordOpen(false)
   }
 
   useEffect(() => {
@@ -379,6 +418,7 @@ function App() {
       setNotice('')
       setRouteTicketId(null)
       window.history.replaceState({}, '', '/')
+      setScope('Deine')
     } catch (error) {
       setAuthError(error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.')
       setLoading(false)
@@ -594,7 +634,7 @@ function App() {
           <span className="account-name">{user.displayName}</span>
           <button
             className="delete-all-button"
-            onClick={() => void handleDeleteAllTickets()}
+            onClick={openDeletePasswordDialog}
             disabled={tickets.length === 0 || saving || deletingAllTickets}
             title="Alle Tickets und KI-Klassifizierungen löschen"
           >
@@ -800,6 +840,37 @@ function App() {
                 Später schließen
               </button>
             </div>
+          </section>
+        </div>
+      )}
+      {deletePasswordOpen && (
+        <div className="delete-password-backdrop">
+          <section className="delete-password-dialog" role="dialog" aria-modal="true" aria-labelledby="delete-password-title">
+            <p className="eyebrow">Sicherheitsprüfung</p>
+            <h2 id="delete-password-title">Alle Tickets löschen?</h2>
+            <p>Zum Löschen aller {tickets.length} Tickets und KI-Klassifizierungen musst du das Löschpasswort eingeben.</p>
+            <form onSubmit={(event) => void handleDeleteAllTickets(event)}>
+              <label htmlFor="delete-password">Löschpasswort</label>
+              <input
+                id="delete-password"
+                type="password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+                autoComplete="current-password"
+                maxLength={256}
+                required
+                autoFocus
+              />
+              {deletePasswordError && <p className="auth-error" role="alert">{deletePasswordError}</p>}
+              <div className="delete-password-actions">
+                <button type="button" className="secondary-button" onClick={closeDeletePasswordDialog} disabled={deletingAllTickets}>
+                  Abbrechen
+                </button>
+                <button type="submit" className="delete-all-button" disabled={deletingAllTickets || !deletePassword}>
+                  {deletingAllTickets ? 'Wird gelöscht ...' : 'Alle endgültig löschen'}
+                </button>
+              </div>
+            </form>
           </section>
         </div>
       )}
