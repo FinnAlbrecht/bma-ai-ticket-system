@@ -44,6 +44,7 @@ public sealed class TicketChatMessageRepository(TicketDbContext dbContext) : ITi
             join ticket in dbContext.Tickets.AsNoTracking() on message.TicketId equals ticket.Id
             where ticket.CreatedByUserId == ownerId
                 && ticket.Category != "OutOfScope"
+                && ticket.Status == "Resolved"
                 && message.Role == "assistant"
                 && !message.IsRead
             orderby message.CreatedAtUtcTicks descending

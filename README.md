@@ -28,7 +28,7 @@ C# (.NET 10) + React, KI-API (OpenRouter oder Anthropic Claude).
 ## Stand
 
 - **Backend:** SQLite speichert Konten, Tickets und KI-Klassifizierungen dauerhaft. Teammitglieder melden sich mit E-Mail und Passwort an; Tickets werden ihrem Ersteller zugeordnet. Ähnliche gelöste Tickets können ihre Lösung wiederverwenden und als hilfreich bestätigt werden. Details siehe [backend/README.md](backend/README.md).
-- **Frontend:** React-Oberfläche mit den Ticketansichten „Deine“ und „Alle“, Erstelleranzeige, einem dauerhaft gespeicherten KI-Chat pro eigenem Ticket und einem separaten Dashboard-Tab. Nur der Ticket-Ersteller kann den Chat, erneute OpenRouter-Anfragen und Ticket-Aktionen verwenden; Teammitglieder können Tickets lesend ansehen.
+- **Frontend:** React-Oberfläche mit den Ticketansichten „Deine“ und „Alle“, Erstelleranzeige, einem dauerhaft gespeicherten KI-Chat für gelöste eigene Tickets und einem separaten Dashboard-Tab. Nur der Ticket-Ersteller kann den Chat, erneute OpenRouter-Anfragen und Ticket-Aktionen verwenden; Teammitglieder können Tickets lesend ansehen.
 
 ## Lokal starten
 

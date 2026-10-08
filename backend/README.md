@@ -53,10 +53,12 @@ Swagger UI: `http://localhost:<port>/swagger`
 | POST    | `/api/tickets/{id}/chat/read` | Chatantworten des eigenen Tickets als gelesen markieren |
 
 Der Ticket-Chat speichert Nachrichten dauerhaft in derselben Datenbank wie die Tickets und lädt sie
-beim erneuten Öffnen wieder. Nur der Ticket-Ersteller kann den Chat verwenden, OpenRouter erneut
-starten, eine vorgeschlagene Lösung bestätigen oder ein Ticket ohne IT-Bezug abschliessen. Andere
-Teammitglieder können Tickets weiterhin ansehen, aber diese Aktionen nicht ausführen; das Backend
-erzwingt die Berechtigung auch dann, wenn ein API-Aufruf direkt gesendet wird.
+beim erneuten Öffnen wieder. Er wird erst angezeigt und ist erst verwendbar, wenn ein Ticket den
+Status „Gelöst“ erreicht hat; Tickets ohne IT-Bezug können den Chat nicht verwenden. Nur der
+Ticket-Ersteller kann den Chat verwenden, OpenRouter erneut starten, eine vorgeschlagene Lösung
+bestätigen oder ein Ticket ohne IT-Bezug abschliessen. Andere Teammitglieder können Tickets weiterhin
+ansehen, aber diese Aktionen nicht ausführen; das Backend erzwingt die Berechtigung auch dann, wenn
+ein API-Aufruf direkt gesendet wird.
 
 Der Standard-Provider lässt sich in `appsettings.json` über `Classification:Provider` auf
 `OpenRouter`, `Claude` oder `Keyword` setzen. Für einen direkten Vergleich kann derselbe Endpunkt

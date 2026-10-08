@@ -232,7 +232,7 @@ public class TicketsController : ControllerBase
     [HttpGet("{id:guid}/chat")]
     public async Task<IActionResult> GetChatHistory(Guid id, CancellationToken ct)
     {
-        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true);
+        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true, requireResolved: true);
         if (ownershipError is not null)
             return ownershipError;
         var messages = await _ticketChatService.GetHistoryAsync(id, ct);
@@ -245,7 +245,7 @@ public class TicketsController : ControllerBase
         [FromBody] SendTicketChatMessageRequest request,
         CancellationToken ct)
     {
-        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true);
+        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true, requireResolved: true);
         if (ownershipError is not null)
             return ownershipError;
 
@@ -279,7 +279,7 @@ public class TicketsController : ControllerBase
     [HttpPost("{id:guid}/chat/read")]
     public async Task<IActionResult> MarkChatMessagesRead(Guid id, CancellationToken ct)
     {
-        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true);
+        var ownershipError = await RequireTicketOwnerAsync(id, ct, requireItRelated: true, requireResolved: true);
         if (ownershipError is not null)
             return ownershipError;
 
@@ -290,7 +290,8 @@ public class TicketsController : ControllerBase
     private async Task<IActionResult?> RequireTicketOwnerAsync(
         Guid ticketId,
         CancellationToken ct,
-        bool requireItRelated = false)
+        bool requireItRelated = false,
+        bool requireResolved = false)
     {
         if (!Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var userId))
             return Unauthorized();
@@ -302,6 +303,8 @@ public class TicketsController : ControllerBase
             return Forbid();
         if (requireItRelated && ticket.Category == TicketSystem.Domain.Tickets.Enums.TicketCategory.OutOfScope)
             return Conflict("Der Chat ist für Tickets ohne IT-Bezug deaktiviert.");
+        if (requireResolved && ticket.Status != TicketSystem.Domain.Tickets.Enums.TicketStatus.Resolved)
+            return Conflict("Der Chat ist erst verfügbar, wenn das Ticket gelöst ist.");
 
         return null;
     }

@@ -128,7 +128,9 @@ function App() {
   const workspaceGeneration = useRef(0)
   const selectedTicket = tickets.find((ticket) => ticket.id === routeTicketId)
   const canManageSelectedTicket = selectedTicket?.createdByUserId === user?.id
-  const canChatSelectedTicket = canManageSelectedTicket && selectedTicket?.category !== 'OutOfScope'
+  const canChatSelectedTicket = canManageSelectedTicket
+    && selectedTicket?.category !== 'OutOfScope'
+    && selectedTicket?.status === 'Resolved'
 
   const enqueueNotification = useCallback((notification: TicketNotification) => {
     setNotifications((current) => current.some((item) => item.id === notification.id)
@@ -1279,7 +1281,7 @@ function TicketDetailPage({
           {history.length > 1 && <p className="history-note">{history.length} Klassifizierungen gespeichert</p>}
         </article>
       </div>
-      {ticket.category !== 'OutOfScope' && latest?.isItRelated !== false && <section className="panel ticket-chat-panel" aria-label="Chat zum Ticket">
+      {ticket.status === 'Resolved' && ticket.category !== 'OutOfScope' && latest?.isItRelated !== false && <section className="panel ticket-chat-panel" aria-label="Chat zum Ticket">
         <div className="panel-head">
           <div><p className="eyebrow">Rückfragen</p><h2>Mit der KI schreiben</h2></div>
           <span className="chat-owner-label">{canChatTicket ? 'Privater Ticket-Chat' : 'Nur für den Ersteller'}</span>
