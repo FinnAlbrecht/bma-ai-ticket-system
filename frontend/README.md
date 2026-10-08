@@ -31,9 +31,12 @@ automatisch an `http://localhost:5278` weiter. API-Schlüssel gehören in die Ba
 nicht in das Frontend.
 
 Beim ersten Öffnen erstellst du ein Konto mit Anzeigename, E-Mail und Passwort. Danach kannst du
-dich anmelden. Die Ticketübersicht hat die Ansichten „Deine“ (von deinem Konto erstellt) und „Alle“;
-in „Alle“ wird der jeweilige Ersteller angezeigt. Konten und Tickets teilen dieselbe Backend-
-Datenbank, sodass Teammitglieder dieselbe Ticketliste verwenden.
+dich anmelden. Die Ticketübersicht öffnet standardmäßig „Deine“ (von deinem Konto erstellte
+Tickets); unter „Alle“ werden auch Tickets von Teammitgliedern samt Ersteller angezeigt. Die
+Ticketliste aktualisiert sich bei angemeldeten Nutzern automatisch etwa alle zwei Sekunden und
+sofort beim Zurückkehren zum Browser-Tab. Hinweise zu gefundenen Lösungen und gelösten Tickets
+werden nur dem Ersteller des jeweiligen Tickets angezeigt. Konten und Tickets teilen dieselbe
+Backend-Datenbank, sodass Teammitglieder dieselbe Ticketliste verwenden.
 
 Für die automatische Klassifizierung muss der OpenRouter-API-Schlüssel im Backend gesetzt sein.
 Ohne gültigen Schlüssel wird das Ticket zwar erstellt, aber die Oberfläche meldet den Fehler bei der

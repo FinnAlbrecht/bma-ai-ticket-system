@@ -19,3 +19,5 @@ services:
         sync: false
       - key: OpenRouter__ApiKey
         sync: false
+      - key: DeleteAll__Password
+        sync: false

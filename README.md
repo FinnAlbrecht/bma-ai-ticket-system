@@ -60,9 +60,9 @@ weiterhin SQLite nutzen.
    PostgreSQL-Verbindungs-URL.
 2. Verbinde dieses GitHub-Repository in [Render](https://render.com/) über **New → Blueprint**.
    Render liest `render.yaml` und baut Frontend und Backend gemeinsam.
-3. Hinterlege im Render-Service `ConnectionStrings__TicketDatabase` mit der Neon-Verbindungs-URL
-   sowie `OpenRouter__ApiKey` mit deinem OpenRouter-Schlüssel. Niemals Schlüssel ins Repository
-   oder in den Chat schreiben.
+3. Hinterlege im Render-Service `ConnectionStrings__TicketDatabase` mit der Neon-Verbindungs-URL,
+   `OpenRouter__ApiKey` mit deinem OpenRouter-Schlüssel und `DeleteAll__Password` mit einem langen,
+   eigenen Löschpasswort. Niemals Schlüssel oder Passwörter ins Repository oder in den Chat schreiben.
 4. Nach erfolgreichem Build ist die von Render angezeigte URL die öffentliche Anwendung. Der erste
    Aufruf kann auf dem kostenlosen Tarif verzögert starten; kostenlose Tarife und Limits können sich
    ändern.

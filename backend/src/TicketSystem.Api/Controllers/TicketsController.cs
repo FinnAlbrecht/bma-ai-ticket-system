@@ -1,5 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Cryptography;
+using System.Text;
 using System.Security.Claims;
 using TicketSystem.Api.Contracts;
 using TicketSystem.Application.Classification.Commands;
@@ -27,6 +29,7 @@ public class TicketsController : ControllerBase
     private readonly AcceptSuggestedSolutionCommandHandler _acceptSuggestedSolutionHandler;
     private readonly ResolveOutOfScopeTicketCommandHandler _resolveOutOfScopeTicketHandler;
     private readonly ITicketRepository _ticketRepository;
+    private readonly IConfiguration _configuration;
 
     public TicketsController(
         CreateTicketCommandHandler createTicketHandler,
@@ -37,7 +40,8 @@ public class TicketsController : ControllerBase
         FindSimilarSolutionCommandHandler findSimilarSolutionHandler,
         AcceptSuggestedSolutionCommandHandler acceptSuggestedSolutionHandler,
         ResolveOutOfScopeTicketCommandHandler resolveOutOfScopeTicketHandler,
-        ITicketRepository ticketRepository)
+        ITicketRepository ticketRepository,
+        IConfiguration configuration)
     {
         _createTicketHandler = createTicketHandler;
         _getAllTicketsHandler = getAllTicketsHandler;
@@ -48,6 +52,7 @@ public class TicketsController : ControllerBase
         _acceptSuggestedSolutionHandler = acceptSuggestedSolutionHandler;
         _resolveOutOfScopeTicketHandler = resolveOutOfScopeTicketHandler;
         _ticketRepository = ticketRepository;
+        _configuration = configuration;
     }
 
     [HttpPost]
@@ -78,8 +83,17 @@ public class TicketsController : ControllerBase
         => Ok(await _getAllTicketsHandler.HandleAsync(new GetAllTicketsQuery(), ct));
 
     [HttpDelete]
-    public async Task<IActionResult> DeleteAll(CancellationToken ct)
+    public async Task<IActionResult> DeleteAll([FromBody] DeleteAllTicketsRequest request, CancellationToken ct)
     {
+        var configuredPassword = _configuration["DeleteAll:Password"];
+        if (string.IsNullOrEmpty(configuredPassword))
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, "Das Löschpasswort wurde serverseitig noch nicht eingerichtet.");
+
+        var expectedPassword = Encoding.UTF8.GetBytes(configuredPassword);
+        var providedPassword = Encoding.UTF8.GetBytes(request.Password);
+        if (!CryptographicOperations.FixedTimeEquals(expectedPassword, providedPassword))
+            return Unauthorized("Das Löschpasswort ist falsch.");
+
         await _ticketRepository.DeleteAllAsync(ct);
         return NoContent();
     }
