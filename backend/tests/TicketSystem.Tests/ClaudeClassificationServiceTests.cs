@@ -318,6 +318,52 @@ public class ClaudeClassificationServiceTests
     }
 
     [Fact]
+    public async Task Controller_DisablesChatUntilTicketIsResolved()
+    {
+        var ownerId = Guid.NewGuid();
+        var ticketRepository = new InMemoryTicketRepository();
+        var ticket = new Ticket("WLAN", "Die Verbindung bricht ab.", ownerId, "Besitzer");
+        await ticketRepository.AddAsync(ticket);
+        var classificationRepository = new InMemoryTicketClassificationRepository();
+
+        var controller = new TicketsController(
+            new CreateTicketCommandHandler(ticketRepository),
+            new GetAllTicketsQueryHandler(ticketRepository),
+            new GetTicketByIdQueryHandler(ticketRepository),
+            new ClassifyTicketCommandHandler(
+                ticketRepository,
+                classificationRepository,
+                new FixedResolver(new KeywordBasedClassificationService())),
+            new GetTicketClassificationHistoryQueryHandler(ticketRepository, classificationRepository),
+            new FindSimilarSolutionCommandHandler(ticketRepository),
+            new AcceptSuggestedSolutionCommandHandler(ticketRepository),
+            new ResolveOutOfScopeTicketCommandHandler(ticketRepository),
+            new StubTicketChatService(),
+            ticketRepository,
+            new ConfigurationBuilder().Build())
+        {
+            ControllerContext = new ControllerContext
+            {
+                HttpContext = new DefaultHttpContext
+                {
+                    User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [new Claim(ClaimTypes.NameIdentifier, ownerId.ToString())],
+                        "test"))
+                }
+            }
+        };
+
+        var historyResult = await controller.GetChatHistory(ticket.Id, CancellationToken.None);
+        var sendResult = await controller.SendChatMessage(
+            ticket.Id,
+            new TicketSystem.Api.Contracts.SendTicketChatMessageRequest("Was soll ich tun?"),
+            CancellationToken.None);
+
+        Assert.IsType<ConflictObjectResult>(historyResult);
+        Assert.IsType<ConflictObjectResult>(sendResult);
+    }
+
+    [Fact]
     public async Task Handler_PreservesBothProviderResultsInHistory()
     {
         var ticketRepository = new InMemoryTicketRepository();
@@ -697,6 +743,8 @@ public class ClaudeClassificationServiceTests
             var chatRepository = new TicketChatMessageRepository(dbContext);
             await chatRepository.AddAsync(newTicket.Id, "user", "WLAN funktioniert noch nicht.");
             var answer = await chatRepository.AddAsync(newTicket.Id, "assistant", "Starte den Router neu.");
+            newTicket.Resolve("Ticket wurde gelöst.");
+            await ticketRepository.UpdateAsync(newTicket);
             var history = await chatRepository.GetByTicketIdAsync(newTicket.Id);
             var unread = await chatRepository.GetUnreadByOwnerAsync(ownerId);
             Assert.Equal(2, history.Count);
